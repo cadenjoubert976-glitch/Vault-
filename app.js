@@ -41,7 +41,7 @@ function sumObj(o){return Object.keys(o||{}).reduce(function(a,k){return a+(+o[k
 /* ---------- state ---------- */
 function blankState(){return {
  v:2,updatedAt:0,lastBackup:0,
- settings:{funTarget:600,funFloor:300,funShare:0.35,bufferPct:0.05,bufferMin:100,efMonths:3,efShare:0.6,payday:25,tfsaLimit:46000,tfsaUsed:0,dadGift:0,theme:'light',fuelPrice:30.24,fuelMonth:''},
+ settings:{funTarget:600,funFloor:300,funShare:0.35,bufferPct:0.05,bufferMin:100,efMonths:3,efShare:0.6,payday:25,tfsaLimit:46000,tfsaUsed:0,dadGift:0,theme:'light',fuelPrice:30.24,fuelMonth:'',bonusMonth:2,bonusTotal:0},
  buckets:[
   {id:'fixed',name:'Fixed costs',why:'The stuff that leaves anyway. Paid first so nothing bounces.'},
   {id:'business',name:'Business',amount:0,why:"Owner's contribution, kept in its own account so business and personal never mix."},
@@ -75,6 +75,7 @@ function migrate(o){
  if(!o.cc)o.cc={limit:1000,owedStart:num((o.nw||{}).cc)||0,startAt:Date.now()};
  if(!o.autoPosted)o.autoPosted={};
  if(!o.cash)o.cash={start:0,startAt:Date.now()};
+ if(o.settings.bonusMonth==null)o.settings.bonusMonth=2;if(o.settings.bonusTotal==null)o.settings.bonusTotal=0;
  o.costs.forEach(function(c){
   if(!c.id)c.id=uid();
   if(c.fuel===undefined&&/fuel|petrol/i.test(c.name||'')&&c.freq==='monthly'){c.fuel=true;c.litres=Math.round(num(c.amount)/(o.settings.fuelPrice||30)*10)/10;}
@@ -260,8 +261,10 @@ function bankInfo(){
 function allTx(){var a=[];S.history.forEach(function(h){(h.tx||[]).forEach(function(t){a.push(t);});});(S.current.tx||[]).forEach(function(t){a.push(t);});return a;}
 function ccInfo(){var c=S.cc,owed=num(c.owedStart);allTx().forEach(function(t){if((t.at||0)<=c.startAt)return;if(t.card==='credit'&&t.bucket!=='ccpay')owed+=num(t.amount);if(t.bucket==='ccpay')owed-=num(t.amount);});owed=Math.max(0,Math.round(owed*100)/100);var lim=num(c.limit)||1000;return {owed:owed,limit:lim,avail:lim-owed,pct:owed/lim};}
 /* fixed costs with a date come off by themselves on that day */
+function bonusAmt(){var st=S.settings;return Math.max(0,num(st.bonusTotal)-num(S.current.salary));}
+function ensureBonus(){var st=S.settings;if(num(st.bonusTotal)>0&&ymP(S.current.month).m===num(st.bonusMonth)&&!S.current.bonusAdded){S.current.bonusAdded=true;S.current.extras.push({id:uid(),label:'Annual bonus',amount:Math.round(bonusAmt()),to:'split'});return true;}return false;}
 function autoPost(){
- if(firstRun)return;var t=new Date(),ym=thisYM(),td=todayISO(),last=new Date(t.getFullYear(),t.getMonth()+1,0).getDate(),changed=false;
+ if(firstRun)return;if(ensureBonus()){S.updatedAt=Date.now();try{localStorage.setItem(LS_KEY,JSON.stringify(S));}catch(e){}}var t=new Date(),ym=thisYM(),td=todayISO(),last=new Date(t.getFullYear(),t.getMonth()+1,0).getDate(),changed=false;
  chargeItems().forEach(function(x){if(x.freq!=='monthly'||!x.day)return;var d=ym+'-'+String(Math.min(x.day,last)).padStart(2,'0');if(d>td)return;var key=x.id+'|'+ym;if(S.autoPosted[key])return;S.autoPosted[key]=1;changed=true;
   if(S.current.tx.some(function(tx){return tx.note===x.name&&String(tx.date||'').slice(0,7)===ym;}))return;
   S.current.tx.push({id:uid(),src:'auto',amount:Math.round(x.amt*100)/100,note:x.name,bucket:x.biz?'business':'fixed',card:x.card==='credit'?'credit':'debit',date:d,at:new Date(d+'T08:00:00').getTime()});});
@@ -417,7 +420,7 @@ function vPlan(){
  if(c.rollTotal)h+='<div class="field"><label>Rolled over<small>Leftover from last month</small></label><b class="gt">'+R(c.rollTotal)+'</b></div>';
  var opts=[['split','Split it normally'],['emergency',B('emergency').name],['invest',B('invest').name+' (TFSA)']].concat(S.goals.map(function(g){return [g.id,'Goal: '+g.name];}));
  cur.extras.forEach(function(e){h+='<div style="padding:12px 0;border-bottom:1px solid var(--line)"><div class="row"><input class="txt" placeholder="What was it? (overtime, sale…)" data-extra="'+e.id+'" data-f="label" value="'+esc(e.label)+'"><div class="money"><span>R</span><input inputmode="decimal" style="width:80px" data-extra="'+e.id+'" data-f="amount" value="'+esc(e.amount)+'"></div></div><div class="row" style="margin-top:8px"><select class="txt" data-extra="'+e.id+'" data-f="to">'+opts.map(function(o){return '<option value="'+o[0]+'"'+((e.to||'split')===o[0]?' selected':'')+'>'+esc(o[1])+'</option>';}).join('')+'</select><button class="icon-btn" data-act="delExtra" data-id="'+e.id+'">'+I.x+'</button></div></div>';});
- h+='<button class="btn ghost" data-act="addExtra">+ Add extra money</button></div>';
+ h+='<button class="btn ghost" data-act="addExtra">+ Add extra money</button>'+(num(st.bonusTotal)>0?'<div class="hint">Bonus: '+MONL[num(st.bonusMonth)-1]+' pay day, '+R(st.bonusTotal)+' total. It shows up here by itself that month as "Annual bonus" (~'+R(bonusAmt())+' on top of salary). Point it at a goal or the TFSA if you like.</div>':'')+'</div>';
  // fixed expenses with dates
  var ch=chargeItems(),fixedTot=c.fixed+c.biz;
  ch.forEach(function(x){if(x.day&&x.freq==='monthly')x.n=nextCharge(x.day);});
@@ -527,7 +530,8 @@ function vHistory(){
    h+='<div class="field"><label>Actually moved to savings<small>Blank = moved the plan ('+R(x.plannedSave)+')</small></label><div class="money"><span>R</span><input inputmode="decimal" style="width:80px" data-hist="'+x.month+'" placeholder="'+Math.round(x.plannedSave)+'" value="'+(x.actual==null?'':esc(x.actual))+'"></div></div>';
    if(x.nw)h+='<div class="field"><label>Net worth that month</label><b>'+R(x.nw)+'</b></div>';
    if((x.tx||[]).length)h+='<div style="margin-top:8px">'+(x.tx||[]).slice().sort(function(a,b){return (b.date||'')>(a.date||'')?1:-1;}).map(function(t){return '<div class="tx"><div class="l"><span class="dot" style="background:'+bucketColor(t.bucket)+'"></span><div><div class="n">'+esc(t.note||targetName(t.bucket))+'</div><div class="mini">'+esc(targetName(t.bucket))+' · '+dL(t.date)+'</div></div></div><b>'+R2(t.amount)+'</b></div>';}).join('')+'</div>';
-   h+='<button class="btn line block" style="margin-top:12px" data-act="delHist" data-m="'+x.month+'">Delete this month</button></div>';}
+   if(x.month===hs[hs.length-1].month)h+='<button class="btn soft block" style="margin-top:12px" data-act="reopen">Reopen this month (undo lock-in)</button>';
+   h+='<button class="btn line block" style="margin-top:8px" data-act="delHist" data-m="'+x.month+'">Delete this month</button></div>';}
   h+='</div>';});
  return h;
 }
@@ -550,7 +554,7 @@ function vCosts(){
  S.buckets.forEach(function(b){h+='<div style="padding:12px 0;border-bottom:1px solid var(--line)"><div class="row"><span class="dot" style="background:'+bucketColor(b.id)+'"></span><input class="txt" data-bucket="'+b.id+'" data-f="name" value="'+esc(b.name)+'">'+((b.id==='business'||b.custom)?'<div class="money"><span>R</span><input inputmode="decimal" style="width:70px" data-bucket="'+b.id+'" data-f="amount" value="'+esc(b.amount)+'"></div>':'')+(b.custom?'<button class="icon-btn" data-act="delBucket" data-id="'+b.id+'">'+I.x+'</button>':'')+'</div><textarea class="txt" style="margin-top:8px;min-height:50px;font-size:13px" data-bucket="'+b.id+'" data-f="why">'+esc(b.why)+'</textarea></div>';});
  h+='<button class="btn ghost" data-act="addBucket">+ Add a bucket (fixed amount)</button></div>';
  h+='<div class="card"><div class="card-h"><h3>Split rules</h3></div>';
- [['funTarget','Fun: aim for','Max fun when there\'s room',1],['funFloor','Fun: never below','Even in a tight month',1],['efMonths','Emergency fund months','Months of costs to hold',0],['payday','Payday','Day of the month you get paid',0],['tfsaUsed','TFSA: put in so far','This tax year (from 1 Mar)',1],['dadGift','Expected TFSA lump sum','e.g. a birthday gift going in',1]].forEach(function(f){h+='<div class="field"><label>'+f[1]+'<small>'+f[2]+'</small></label><div class="money">'+(f[3]?'<span>R</span>':'')+'<input inputmode="decimal" style="width:'+(f[3]?90:44)+'px" data-set="'+f[0]+'" value="'+esc(st[f[0]])+'"></div></div>';});
+ [['funTarget','Fun: aim for','Max fun when there\'s room',1],['funFloor','Fun: never below','Even in a tight month',1],['efMonths','Emergency fund months','Months of costs to hold',0],['payday','Payday','Day of the month you get paid',0],['tfsaUsed','TFSA: put in so far','This tax year (from 1 Mar)',1],['dadGift','Expected TFSA lump sum','e.g. a birthday gift going in',1],['bonusTotal','Bonus month: total pay','Everything you get paid that month',1],['bonusMonth','Bonus month','1 = Jan … 2 = Feb … 12 = Dec',0]].forEach(function(f){h+='<div class="field"><label>'+f[1]+'<small>'+f[2]+'</small></label><div class="money">'+(f[3]?'<span>R</span>':'')+'<input inputmode="decimal" style="width:'+(f[3]?90:44)+'px" data-set="'+f[0]+'" value="'+esc(st[f[0]])+'"></div></div>';});
  h+='<div class="field"><label>Emergency fund saved before the app<small>Starting balance</small></label><div class="money"><span>R</span><input inputmode="decimal" style="width:90px" data-ef="saved" value="'+esc(S.ef.saved)+'"></div></div></div>';
  return h;
 }
@@ -598,6 +602,8 @@ function forecast(months){
   var inv=c.alloc.invest,efA=c.alloc.emergency;
   if(ef<efT){var add=Math.min(efA,efT-ef);ef+=add;inv+=efA-add;}else inv+=efA;
   goals.forEach(function(x){var add=Math.min(x.a,Math.max(0,x.t-x.v));x.v+=add;inv+=x.a-add;});
+  var bon=(num(st.bonusTotal)>0&&ymP(ym).m===num(st.bonusMonth)&&!(i===1&&S.current.bonusAdded))?Math.max(0,num(st.bonusTotal)-num(S.current.salary)):0;
+  if(bon>0){var toEf=ef<efT?Math.min(bon,efT-ef):0;ef+=toEf;inv+=bon-toEf;}
   var lump=0;if(gift>0&&!giftDone&&ymP(ym).m===2&&ym<='2027-02'){lump=gift;giftDone=true;}
   tfsa=tfsa*(1+mr)+inv+lump;contrib+=inv+lump;tyC+=inv+lump;
   out.push({ym:ym,label:months>8?MON[ymP(ym).m-1]+' \''+String(ymP(ym).y).slice(2):MON[ymP(ym).m-1],ef:ef,goals:goals.reduce(function(a,x){return a+x.v;},0),goalList:goals.map(function(x){return {name:x.name,v:x.v,t:x.t};}),tfsa:tfsa,contrib:contrib,over:tyC>num(st.tfsaLimit)});
@@ -619,7 +625,7 @@ function openStats(){
   h+=stackBars(f.map(function(x){return x.label;}),[{name:B('emergency').name,c:p.emergency,values:f.map(function(x){return x.ef;})},{name:'Goals',c:p.goals,values:f.map(function(x){return x.goals;})},{name:'TFSA (EasyEquities)',c:p.invest,values:f.map(function(x){return x.tfsa;})}]);
   var tmax=Math.max(last.tfsa,1);h+='<div style="margin-top:12px">'+hbars([{n:B('emergency').name+(last.ef>=c.efTarget-1?' (full ✓)':' of '+R(c.efTarget)),v:last.ef,t:c.efTarget||1,c:p.emergency}].concat(last.goalList.map(function(x){return {n:x.name+' of '+R(x.t),v:x.v,t:x.t||1,c:p.goals};})).concat([{n:'TFSA value',v:last.tfsa,t:tmax,nopc:true,c:p.invest}]),1)+'</div>';
   var ov=f.filter(function(x){return x.over;})[0];
-  h+='<div class="note">TFSA assumes <b>'+num(S.settings.growth||9)+'% a year</b> growth (index funds, not guaranteed: markets go up and down). Contributions: '+R(last.contrib)+(num(S.settings.dadGift)>0&&S.current.month<='2027-02'?', incl. the '+R(S.settings.dadGift)+' lump sum in Feb':'')+'. Once the emergency fund is full, that money flows into the TFSA.</div>';
+  h+='<div class="note">TFSA assumes <b>'+num(S.settings.growth||9)+'% a year</b> growth (index funds, not guaranteed: markets go up and down). Contributions: '+R(last.contrib)+(num(S.settings.dadGift)>0&&S.current.month<='2027-02'?', incl. the '+R(S.settings.dadGift)+' lump sum in Feb':'')+'. Once the emergency fund is full, that money flows into the TFSA.'+(num(S.settings.bonusTotal)>0?' Your '+MON[num(S.settings.bonusMonth)-1]+' bonus (~'+R(bonusAmt())+' extra) goes to the emergency fund first, then the TFSA.':'')+'</div>';
   if(ov)h+='<div class="alert" style="margin:10px 0 0"><b>TFSA limit warning: '+ymL(ov.ym,true)+'</b>This plan puts more than R46,000 into your TFSA in one tax year. Move part of it to after 1 March.</div>';
   h+='<div class="field" style="margin-top:8px"><label>Growth per year<small>Change to see different outcomes</small></label><div class="money" style="width:100px"><input inputmode="decimal" style="width:50px" data-growth="1" value="'+esc(num(S.settings.growth||9))+'"><span style="color:var(--muted);font-weight:700">%</span></div></div></div>';
   // where money goes
@@ -883,6 +889,10 @@ root.addEventListener('click',function(e){
  case 'scan':scanFlow();return;
  case 'hf':histFilter=a.dataset.v;rerender();return;
  case 'stats':openStats();return;
+ case 'reopen':if(!a.dataset.sure){a.dataset.sure='1';a.textContent='Tap again: '+ymL(S.history[S.history.length-1].month,true)+' becomes your current month';return;}
+  var lr=S.history.sort(function(p,q){return p.month<q.month?-1:1;}).pop();
+  S.current={month:lr.month,salary:lr.salary,dad:lr.dad,extras:lr.extras||[],tx:(lr.tx||[]).concat(S.current.tx||[]),adj:lr.adj||[],roll:lr.roll||{},bonusAdded:S.current.bonusAdded&&false};
+  tab='plan';save(ymL(lr.month,true)+' reopened. Purchases kept');return;
  case 'bankList':bankOpen=!bankOpen;rerender();return;
  case 'cash':cashFlow();return;
  case 'togglePF':S.nw.includePF=!S.nw.includePF;save(S.nw.includePF?'Provident fund counted':'Provident fund not counted');return;
