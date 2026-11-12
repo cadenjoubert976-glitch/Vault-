@@ -566,13 +566,13 @@ function stackBars(labels,series,opts){
  var tots=labels.map(function(_,i){return series.reduce(function(a,s){return a+Math.max(0,s.values[i]);},0);});
  var max=Math.max.apply(null,tots.concat([1])),step=niceStep(max/4),top=step*Math.ceil(max/step),out='';
  for(var k=0;k<=top/step;k++){var y=pt+ih-(k*step/top)*ih;out+='<line class="grid-l" x1="'+pl+'" x2="'+(W-pr)+'" y1="'+y+'" y2="'+y+'"/><text class="ax" x="'+(pl-6)+'" y="'+(y+3)+'" text-anchor="end">'+kfmt(k*step)+'</text>';}
- var cw=(W-pl-pr)/n,bw=Math.min(30,cw*0.56);
- labels.forEach(function(l,i){var x=pl+cw*i+(cw-bw)/2,y0=pt+ih;series.forEach(function(s){var v=Math.max(0,s.values[i]),h=v/top*ih;if(h>0.3){out+='<rect x="'+x.toFixed(1)+'" y="'+(y0-h).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'" fill="'+s.c+'"/>';y0-=h;}});
-  out+='<text class="bv" x="'+(x+bw/2).toFixed(1)+'" y="'+(y0-6).toFixed(1)+'" text-anchor="middle">'+kfmt(tots[i])+'</text><text class="ax" x="'+(x+bw/2).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle">'+esc(l)+'</text>';});
+ var cw=(W-pl-pr)/n,bw=Math.min(30,cw*0.62),every=n<=8?1:Math.ceil(n/6);
+ labels.forEach(function(l,i){var x=pl+cw*i+(cw-bw)/2,y0=pt+ih,show=(n-1-i)%every===0;series.forEach(function(s){var v=Math.max(0,s.values[i]),h=v/top*ih;if(h>0.3){out+='<rect x="'+x.toFixed(1)+'" y="'+(y0-h).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'" fill="'+s.c+'"/>';y0-=h;}});
+  if(show){var lx=Math.min(W-pr-14,Math.max(pl+14,x+bw/2));out+='<text class="bv" x="'+lx.toFixed(1)+'" y="'+(y0-6).toFixed(1)+'" text-anchor="middle">'+(tots[i]>=1000?'R'+Math.round(tots[i]/1000)+'k':R(tots[i]))+'</text><text class="ax" x="'+lx.toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle">'+esc(l)+'</text>';}});
  var leg='<div class="row" style="flex-wrap:wrap;gap:12px;margin-top:8px">'+series.map(function(s){return '<span class="mini row" style="gap:6px"><span class="dot" style="background:'+s.c+'"></span>'+esc(s.name)+'</span>';}).join('')+'</div>';
  return '<div class="chart"><svg viewBox="0 0 '+W+' '+H+'">'+out+'</svg></div>'+leg;
 }
-function hbars(rows,total){return rows.map(function(r){var pc=total>0?r.v/total*100:0;return '<div class="perf"><div class="between"><span class="bname"><span class="dot" style="background:'+r.c+'"></span>'+esc(r.n)+'</span><b>'+R(r.v)+' <span class="mini">'+Math.round(pc)+'%</span></b></div><div class="bar"><i style="width:'+Math.min(100,pc).toFixed(1)+'%;background:'+r.c+'"></i></div></div>';}).join('');}
+function hbars(rows,total){return rows.map(function(r){var pc=r.t?r.v/r.t*100:(total>0?r.v/total*100:0);return '<div class="perf"><div class="between"><span class="bname"><span class="dot" style="background:'+r.c+'"></span>'+esc(r.n)+'</span><b>'+R(r.v)+(r.nopc?'':' <span class="mini">'+Math.round(pc)+'%'+(r.t?' there':'')+'</span>')+'</b></div><div class="bar"><i style="width:'+Math.min(100,pc).toFixed(1)+'%;background:'+r.c+'"></i></div></div>';}).join('');}
 function forecast(months){
  var c=compute(),st=S.settings,g=num(st.growth||9)/100,mr=Math.pow(1+g,1/12)-1;
  var ef=c.efNow,efT=c.efTarget,tfsa=num(S.nw.tfsa),contrib=0,goals=c.goals.filter(function(x){return x.g.inSplit;}).map(function(x){return {name:x.g.name,v:x.saved,t:num(x.g.target),a:x.alloc};});
@@ -585,7 +585,7 @@ function forecast(months){
   goals.forEach(function(x){var add=Math.min(x.a,Math.max(0,x.t-x.v));x.v+=add;inv+=x.a-add;});
   var lump=0;if(gift>0&&!giftDone&&ymP(ym).m===2&&ym<='2027-02'){lump=gift;giftDone=true;}
   tfsa=tfsa*(1+mr)+inv+lump;contrib+=inv+lump;tyC+=inv+lump;
-  out.push({ym:ym,label:MON[ymP(ym).m-1],ef:ef,goals:goals.reduce(function(a,x){return a+x.v;},0),goalList:goals.map(function(x){return {name:x.name,v:x.v,t:x.t};}),tfsa:tfsa,contrib:contrib,over:tyC>num(st.tfsaLimit)});
+  out.push({ym:ym,label:months>8?MON[ymP(ym).m-1]+' \''+String(ymP(ym).y).slice(2):MON[ymP(ym).m-1],ef:ef,goals:goals.reduce(function(a,x){return a+x.v;},0),goalList:goals.map(function(x){return {name:x.name,v:x.v,t:x.t};}),tfsa:tfsa,contrib:contrib,over:tyC>num(st.tfsaLimit)});
  }
  return out;
 }
@@ -602,7 +602,7 @@ function openStats(){
   h+='<div class="card"><div class="card-h"><h3>Forecast</h3></div><div class="seg" style="margin-bottom:12px">'+[[6,'6 MONTHS'],[12,'1 YEAR'],[24,'2 YEARS']].map(function(o){return '<button data-hz="'+o[0]+'" class="'+(hz===o[0]?'on':'')+'">'+o[1]+'</button>';}).join('')+'</div>';
   h+='<div class="mini">By '+ymL(last.ym,true)+' you\'ll have about</div><div class="serif" style="font-size:44px;line-height:1.05;margin:4px 0">'+R(last.ef+last.goals+last.tfsa)+'</div><div class="mini">saved + invested · <b class="gt">+'+R(gain)+'</b> from today'+(growth>1?', incl. ~'+R(growth)+' TFSA growth':'')+'</div>';
   h+=stackBars(f.map(function(x){return x.label;}),[{name:B('emergency').name,c:p.emergency,values:f.map(function(x){return x.ef;})},{name:'Goals',c:p.goals,values:f.map(function(x){return x.goals;})},{name:'TFSA (EasyEquities)',c:p.invest,values:f.map(function(x){return x.tfsa;})}]);
-  h+='<div style="margin-top:12px">'+hbars([{n:B('emergency').name+(last.ef>=c.efTarget-1?' (full ✓)':' of '+R(c.efTarget)),v:last.ef,c:p.emergency}].concat(last.goalList.map(function(x){return {n:x.name+' of '+R(x.t),v:x.v,c:p.goals};})).concat([{n:'TFSA value',v:last.tfsa,c:p.invest}]),last.ef+last.goals+last.tfsa)+'</div>';
+  var tmax=Math.max(last.tfsa,1);h+='<div style="margin-top:12px">'+hbars([{n:B('emergency').name+(last.ef>=c.efTarget-1?' (full ✓)':' of '+R(c.efTarget)),v:last.ef,t:c.efTarget||1,c:p.emergency}].concat(last.goalList.map(function(x){return {n:x.name+' of '+R(x.t),v:x.v,t:x.t||1,c:p.goals};})).concat([{n:'TFSA value',v:last.tfsa,t:tmax,nopc:true,c:p.invest}]),1)+'</div>';
   var ov=f.filter(function(x){return x.over;})[0];
   h+='<div class="note">TFSA assumes <b>'+num(S.settings.growth||9)+'% a year</b> growth (index funds, not guaranteed: markets go up and down). Contributions: '+R(last.contrib)+(num(S.settings.dadGift)>0&&S.current.month<='2027-02'?', incl. the '+R(S.settings.dadGift)+' lump sum in Feb':'')+'. Once the emergency fund is full, that money flows into the TFSA.</div>';
   if(ov)h+='<div class="alert" style="margin:10px 0 0"><b>TFSA limit warning: '+ymL(ov.ym,true)+'</b>This plan puts more than R46,000 into your TFSA in one tax year. Move part of it to after 1 March.</div>';
