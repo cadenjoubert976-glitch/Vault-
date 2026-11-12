@@ -279,7 +279,7 @@ function donut(slices,cVal,cLbl,size){
  slices=slices.filter(function(s){return s.v>0.5;});
  var total=slices.reduce(function(a,s){return a+s.v;},0)||1,a0=-Math.PI/2,gap=slices.length>1?0.025:0,out='';
  if(!slices.length)out='<circle cx="'+cx+'" cy="'+cy+'" r="'+((ro+ri)/2)+'" fill="none" stroke="'+pal().unused+'" stroke-width="'+(ro-ri)+'"/>';
- slices.forEach(function(s){var ang=s.v/total*Math.PI*2,a1=a0+ang,sA=a0+gap/2,eA=a1-gap/2;if(ang>=Math.PI*2-0.001)eA=sA+Math.PI*2-0.0005;if(eA<=sA)eA=sA+0.002;out+='<path d="'+arc(cx,cy,ro,ri,sA,eA)+'" fill="'+s.c+'"><title>'+esc(s.n)+' '+R(s.v)+'</title></path>';a0=a1;});
+ slices.forEach(function(s){var ang=s.v/total*Math.PI*2,a1=a0+ang,sA=a0+gap/2,eA=a1-gap/2;if(ang>=Math.PI*2-0.001)eA=sA+Math.PI*2-0.0005;if(eA<=sA)eA=sA+0.002;out+='<path d="'+arc(cx,cy,ro,ri,sA,eA)+'" fill="'+s.c+'"><title>'+esc(s.n)+' '+R(s.v)+'</title></path>';var pc=s.v/total*100;if(pc>=7&&!s.noPct){var md=(a0+a1)/2,lr=(ro+ri)/2,hx=s.c.replace('#','');var lum=(0.299*parseInt(hx.substr(0,2),16)+0.587*parseInt(hx.substr(2,2),16)+0.114*parseInt(hx.substr(4,2),16))/255;out+='<text x="'+(cx+Math.cos(md)*lr).toFixed(1)+'" y="'+(cy+Math.sin(md)*lr).toFixed(1)+'" text-anchor="middle" dominant-baseline="central" style="font-size:'+(size*0.062)+'px;font-weight:800;fill:'+(lum>0.55?'#0A0A0A':'#FFFFFF')+'">'+Math.round(pc)+'%</text>';}a0=a1;});
  return '<svg viewBox="0 0 '+size+' '+size+'">'+out+'<text x="'+cx+'" y="'+(cy+2)+'" text-anchor="middle" class="serif" style="font-size:'+(size*0.15)+'px;fill:var(--text)">'+esc(cVal)+'</text><text x="'+cx+'" y="'+(cy+size*0.13)+'" text-anchor="middle" style="font-size:'+(size*0.055)+'px;letter-spacing:.15em;font-weight:800;fill:var(--muted)">'+esc(cLbl)+'</text></svg>';
 }
 function niceStep(x){if(x<=0)return 1;var p=Math.pow(10,Math.floor(Math.log10(x))),n=x/p;return (n<=1?1:n<=2?2:n<=5?5:10)*p;}
@@ -342,8 +342,8 @@ function planVsActual(c,rows,title){
  var p=pal(),planSl=[],actSl=[],used=0,leg='';
  rows.forEach(function(r){var col=bucketColor(r.id);planSl.push({n:r.name,v:Math.max(0,r.budget),c:col});actSl.push({n:r.name,v:r.used,c:r.used>r.budget+0.5&&!r.move?p.red:col});used+=r.used;});
  var planTotal=planSl.reduce(function(a,s){return a+s.v;},0);
- if(planTotal-used>0)actSl.push({n:'Not used yet',v:planTotal-used,c:p.unused});
- leg='<div class="legend"><div class="lr h"><span>Bucket</span><span>Plan</span><span>Now</span></div>'+rows.filter(function(r){return r.budget>0||r.used>0;}).map(function(r){var ov=!r.move&&r.used>r.budget+0.5;return '<div class="lr"><span class="bname"><span class="dot" style="background:'+bucketColor(r.id)+'"></span>'+esc(r.name)+'</span><span>'+R(r.budget)+'</span><span class="'+(ov?'rt':r.used>0?'gt':'')+'">'+R(r.used)+'</span></div>';}).join('')+'</div>';
+ if(planTotal-used>0)actSl.push({n:'Not used yet',v:planTotal-used,c:p.unused,noPct:true});
+ leg='<div class="legend"><div class="lr h"><span>Bucket</span><span>Plan</span><span>Now</span></div>'+rows.filter(function(r){return r.budget>0||r.used>0;}).map(function(r){var ov=!r.move&&r.used>r.budget+0.5;var pp=planTotal>0?Math.round(r.budget/planTotal*100):0,up=r.budget>0?Math.round(r.used/r.budget*100):(r.used>0?100:0);return '<div class="lr"><span class="bname"><span class="dot" style="background:'+bucketColor(r.id)+'"></span>'+esc(r.name)+'</span><span>'+R(r.budget)+'<small class="pc">'+pp+'% of plan</small></span><span class="'+(ov?'rt':r.used>0?'gt':'')+'">'+R(r.used)+'<small class="pc">'+up+(r.move?'% moved':'% used')+'</small></span></div>';}).join('')+'</div>';
  return '<div class="card"><div class="card-h"><h3>'+(title||'Plan vs now')+'</h3><span class="mini">'+R(used)+' used</span></div><div class="duo"><div>'+donut(planSl,R(planTotal),'PLAN')+'<div class="lbl">WHAT IT SHOULD BE</div></div><div>'+donut(actSl,R(used),'USED')+'<div class="lbl">WHAT IT IS NOW</div></div></div>'+leg+'</div>';
 }
 function perfCard(rows,title){
