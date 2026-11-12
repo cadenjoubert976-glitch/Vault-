@@ -87,7 +87,7 @@ try{S=JSON.parse(localStorage.getItem(LS_KEY)||'null');}catch(e){S=null;}
 var firstRun=!S;
 S=migrate(S);
 
-var tab='plan',moreSub='nw',openMonth=null,locked=false,histFilter='all';
+var tab='plan',moreSub='nw',openMonth=null,locked=false,histFilter='all',bankOpen=false;
 var hh=(location.hash||'').slice(1);
 if(['plan','spend','goals','history','more'].indexOf(hh)>=0)tab=hh;
 
@@ -252,10 +252,10 @@ function bankInfo(){
    inc+=amt;paydays.push({d:d,amt:amt});}
   ym=addM(ym,1);}
  var all=[];S.history.forEach(function(h){(h.tx||[]).forEach(function(t){all.push(t);});});(S.current.tx||[]).forEach(function(t){all.push(t);});
- var out=0,internal=0;
- all.forEach(function(t){var after=t.at?t.at>bk.anchorAt:(t.date||'')>bk.anchorDate;if(!after||t.card==='credit'||t.card==='cash'||t.card==='other')return;if(stays(t.bucket))internal+=num(t.amount);else out+=num(t.amount);});
+ var out=0,internal=0,items=[];
+ all.forEach(function(t){var d=t.date||'',after=d?(d>bk.anchorDate||(d===bk.anchorDate&&(t.at||0)>bk.anchorAt)):(t.at||0)>bk.anchorAt;if(!after||t.card==='credit'||t.card==='cash'||t.card==='other')return;if(stays(t.bucket))internal+=num(t.amount);else{out+=num(t.amount);items.push(t);}});
  var expected=num(bk.anchor)+inc-out;
- return {expected:expected,inc:inc,out:out,internal:internal,paydays:paydays,diff:num(bk.actual)-expected};
+ return {expected:expected,inc:inc,out:out,internal:internal,paydays:paydays,items:items,diff:num(bk.actual)-expected};
 }
 function allTx(){var a=[];S.history.forEach(function(h){(h.tx||[]).forEach(function(t){a.push(t);});});(S.current.tx||[]).forEach(function(t){a.push(t);});return a;}
 function ccInfo(){var c=S.cc,owed=num(c.owedStart);allTx().forEach(function(t){if((t.at||0)<=c.startAt)return;if(t.card==='credit'&&t.bucket!=='ccpay')owed+=num(t.amount);if(t.bucket==='ccpay')owed-=num(t.amount);});owed=Math.max(0,Math.round(owed*100)/100);var lim=num(c.limit)||1000;return {owed:owed,limit:lim,avail:lim-owed,pct:owed/lim};}
@@ -404,7 +404,8 @@ function vPlan(){
  var bi=bankInfo(),ad=Math.abs(bi.diff);
  h+='<div class="card"><div class="card-h"><h3>Bank check</h3>'+(ad<10?'<span class="chip g">Spot on ✓</span>':bi.diff<0?'<span class="chip r">'+R(ad)+' missing</span>':'<span class="chip a">'+R(ad)+' extra</span>')+'</div>';
  h+='<div class="between" style="align-items:flex-end"><div><div class="mini">Should be in your bank</div><div class="serif" style="font-size:38px;line-height:1.05;margin-top:4px">'+R(bi.expected)+'</div></div><div style="text-align:right"><div class="mini" style="margin-bottom:6px">Actually in your bank</div><div class="money"><span>R</span><input inputmode="decimal" style="width:90px" data-bank="actual" value="'+esc(S.bank.actual)+'"></div></div></div>';
- h+='<div class="note">'+R(S.bank.anchor)+' on '+dL(S.bank.anchorDate)+(bi.inc?' + '+R(bi.inc)+' pay':'')+' − '+R(bi.out)+' logged out'+(bi.internal?' · '+R(bi.internal)+' moved to savings pockets':'')+'</div>';
+ h+='<div class="note">'+R2(S.bank.anchor)+' on '+dL(S.bank.anchorDate)+(bi.inc?' + '+R(bi.inc)+' pay':'')+' − '+R2(bi.out)+' logged out'+(bi.internal?' · '+R(bi.internal)+' moved to savings pockets':'')+' · <a href="#" class="gt" data-act="bankList">'+(bankOpen?'hide':'see what\'s counted')+'</a></div>';
+ if(bankOpen){h+='<div style="margin-top:8px">'+(bi.items.length?bi.items.slice().sort(function(a,b){return (b.date||'')>(a.date||'')?1:-1;}).map(function(t){return '<div class="tx"><div class="l"><span class="dot" style="background:'+bucketColor(t.bucket)+'"></span><div><div class="n">'+esc(t.note||targetName(t.bucket))+'</div><div class="mini">'+dL(t.date)+' · '+esc(targetName(t.bucket))+(t.src==='auto'?' · auto':'')+'</div></div></div><div class="row"><b>−'+R2(t.amount)+'</b><button class="icon-btn" data-act="editTx" data-id="'+t.id+'">'+I.edit+'</button></div></div>';}).join(''):'<div class="hint">Nothing logged since then.</div>')+'<div class="hint">Something here that didn\'t actually leave your bank (yet), or happened before '+dL(S.bank.anchorDate)+'? Tap ✏️ to fix the date, change it to Credit/Cash, or delete it.</div></div>';}
  if(ad>=10)h+='<div class="note">'+(bi.diff<0?'Your bank has <b class="rt">'+R(ad)+' less</b> than expected. Something isn\'t logged: a debit order, a swipe or bank fees.':'Your bank has <b class="gt">'+R(ad)+' more</b> than expected. Maybe something was logged twice, or money came in that isn\'t on the plan.')+'</div>';
  h+='<div class="row" style="gap:8px;margin-top:12px"><button class="btn line" style="flex:1" data-act="debits">+ Log debit orders</button><button class="btn line" style="flex:1" data-act="reanchor">Start fresh today</button></div></div>';
  // plan vs actual
@@ -882,6 +883,7 @@ root.addEventListener('click',function(e){
  case 'scan':scanFlow();return;
  case 'hf':histFilter=a.dataset.v;rerender();return;
  case 'stats':openStats();return;
+ case 'bankList':bankOpen=!bankOpen;rerender();return;
  case 'cash':cashFlow();return;
  case 'togglePF':S.nw.includePF=!S.nw.includePF;save(S.nw.includePF?'Provident fund counted':'Provident fund not counted');return;
  case 'tipToggle':S.current.tipDone=S.current.tipDone||{};var tid=a.dataset.id,cur=S.current.tipDone[tid];
@@ -890,7 +892,7 @@ root.addEventListener('click',function(e){
  case 'bankEdit':var bf=document.querySelector('[data-bank=actual]');if(bf){bf.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(function(){bf.focus();},400);}else{tab='plan';render();}return;
  case 'ccPay':var ci=ccInfo();sheet('Pay credit card',[{k:'amount',label:'How much are you paying off?',type:'money',value:ci.owed},{k:'limit',label:'Card limit',type:'money',value:ci.limit}],function(o){S.cc.limit=num(o.limit)||ci.limit;var a=num(o.amount);if(a>0){S.current.tx.push({id:uid(),src:'manual',at:Date.now(),amount:Math.round(a*100)/100,note:'Credit card payment',bucket:'ccpay',card:'debit',date:todayISO()});save(R(a)+' paid off. '+R(Math.max(0,ci.owed-a))+' still owed');}else save('Updated');},null,R(ci.owed)+' owed of '+R(ci.limit)+'. Paying it moves money from your debit account to the card. Your buckets don\'t change, because the purchases were already counted.','Pay it');return;
  case 'addTx':txSheet({id:uid(),src:'manual'},true);return;
- case 'editTx':var tx=findById(S.current.tx,id);if(tx)txSheet(tx,false);return;
+ case 'editTx':var tx=findById(S.current.tx,id);if(tx)txSheet(tx,false);else toast('That one is in a locked month');return;
  case 'cover':coverSheet(id);return;
  case 'delAdj':S.current.adj.splice(+a.dataset.i,1);save('Move undone');return;
  case 'addExtra':S.current.extras.push({id:uid(),label:'',amount:'',to:'split'});save();return;
