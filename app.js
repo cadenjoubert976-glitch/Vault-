@@ -188,27 +188,30 @@ function scoreNow(c){
  var sb=spend.reduce(function(a,r){return a+r.budget;},0),su=spend.reduce(function(a,r){return a+r.used;},0),up=sb>0?su/sb:0;
  // 1 pace (30)
  var paceRatio=pp.elapsed>0.02?up/pp.elapsed:up*5;var pace=paceRatio<=1.05?30:paceRatio<=1.3?20:paceRatio<=1.6?10:0;pts+=pace;
- if(pace===30)tips.push({k:'ok',t:'Spending pace is good: '+Math.round(up*100)+'% of your spending money used, '+Math.round(pp.elapsed*100)+'% of the month gone.'});
- else tips.push({k:pace>=20?'mid':'bad',t:'You\'re spending fast: '+Math.round(up*100)+'% used with only '+Math.round(pp.elapsed*100)+'% of the month gone. Slow down to '+R(safeToSpend(c).perDay)+'/day.'});
+ var earned={pace:pace,over:0,moved:0,rate:0,bank:0},MAX={pace:30,over:20,moved:25,rate:15,bank:10,cc:0};
+ if(pace===30)tips.push({id:'pace',k:'ok',t:'Spending pace is good: '+Math.round(up*100)+'% of your spending money used, '+Math.round(pp.elapsed*100)+'% of the month gone.'});
+ else tips.push({id:'pace',k:pace>=20?'mid':'bad',t:'You\'re spending fast: '+Math.round(up*100)+'% used with only '+Math.round(pp.elapsed*100)+'% of the month gone. Slow down to '+R(safeToSpend(c).perDay)+'/day.'});
  // 2 nothing over (20)
- var over=rows.filter(function(r){return !r.move&&r.used>r.budget+0.5;});var ov=Math.max(0,20-over.length*8);pts+=ov;
- if(over.length)tips.push({k:'bad',t:over.map(function(r){return esc(r.name)+' is over by '+R(r.used-r.budget);}).join(', ')+'. Tap "Cover it" on the Spend tab to move money from another bucket.'});
- else tips.push({k:'ok',t:'No bucket is over budget.'});
+ var over=rows.filter(function(r){return !r.move&&r.used>r.budget+0.5;});var ov=Math.max(0,20-over.length*8);pts+=ov;earned.over=ov;
+ if(over.length)tips.push({id:'over',k:'bad',t:over.map(function(r){return esc(r.name)+' is over by '+R(r.used-r.budget);}).join(', ')+'. Tap "Cover it" on the Spend tab to move money from another bucket.'});
+ else tips.push({id:'over',k:'ok',t:'No bucket is over budget.'});
  // 3 savings moved (25)
  var mv=rows.filter(function(r){return r.move&&!r.outside&&r.budget>0;});var mb=mv.reduce(function(a,r){return a+r.budget;},0),mu=mv.reduce(function(a,r){return a+Math.min(r.used,r.budget);},0);
- var grace=pp.gone<=3;var mpts=mb<=0?25:(grace?25:Math.round(25*Math.min(1,mu/mb)));pts+=mpts;
- if(mb>0&&!grace&&mu<mb-1)tips.push({k:mpts>=15?'mid':'bad',t:R(mb-mu)+' of savings/transfers not moved yet. Move it and log it on the Spend tab so it doesn\'t get spent.'});
- else if(mb>0)tips.push({k:'ok',t:grace?'Payday week: move your savings and business money in the next few days.':'All savings moved for this month.'});
+ var grace=pp.gone<=3;var mpts=mb<=0?25:(grace?25:Math.round(25*Math.min(1,mu/mb)));pts+=mpts;earned.moved=mpts;
+ if(mb>0&&!grace&&mu<mb-1)tips.push({id:'moved',k:mpts>=15?'mid':'bad',t:R(mb-mu)+' of savings/transfers not moved yet. Move it and log it on the Spend tab so it doesn\'t get spent.'});
+ else if(mb>0)tips.push({id:'moved',k:'ok',t:grace?'Payday week: move your savings and business money in the next few days.':'All savings moved for this month.'});
  // 4 save rate (15)
- var sr=c.saveRate;var spts=Math.round(15*Math.min(1,sr/0.3));pts+=spts;
- tips.push({k:sr>=0.3?'ok':sr>=0.2?'mid':'bad',t:'Saving '+Math.round(sr*100)+'% of income'+(sr>=0.3?'. That\'s the target for living at home.':'. Aim for 30%+: put overtime and sales money into goals.')});
+ var sr=c.saveRate;var spts=Math.round(15*Math.min(1,sr/0.3));pts+=spts;earned.rate=spts;
+ tips.push({id:'rate',k:sr>=0.3?'ok':sr>=0.2?'mid':'bad',t:'Saving '+Math.round(sr*100)+'% of income'+(sr>=0.3?'. That\'s the target for living at home.':'. Aim for 30%+: put overtime and sales money into goals.')});
  // 5 bank check (10)
- var bi=bankInfo(),ad=Math.abs(bi.diff),bpts=ad<50?10:ad<300?5:0;pts+=bpts;
- if(bpts<10)tips.push({k:bpts?'mid':'bad',t:'Bank check is '+R(ad)+' '+(bi.diff<0?'short':'over')+'. Log any missing purchases or debit orders.'});
- var cci=ccInfo();if(cci.pct>0.3)tips.push({k:cci.pct>0.7?'bad':'mid',t:'Credit card is '+Math.round(cci.pct*100)+'% used ('+R(cci.owed)+' of '+R(cci.limit)+'). Pay it down before the statement date. Under 30% helps your credit score.'});
+ var bi=bankInfo(),ad=Math.abs(bi.diff),bpts=ad<50?10:ad<300?5:0;pts+=bpts;earned.bank=bpts;
+ if(bpts<10)tips.push({id:'bank',k:bpts?'mid':'bad',t:'Bank check is '+R(ad)+' '+(bi.diff<0?'short':'over')+'. Log any missing purchases or debit orders.'});
+ var cci=ccInfo();if(cci.pct>0.3)tips.push({id:'cc',k:cci.pct>0.7?'bad':'mid',t:'Credit card is '+Math.round(cci.pct*100)+'% used ('+R(cci.owed)+' of '+R(cci.limit)+'). Pay it down before the statement date. Under 30% helps your credit score.'});
+ var td=S.current.tipDone||{};
+ tips.forEach(function(t){var o=td[t.id];if(o===true&&t.k!=='ok'){pts+=(MAX[t.id]||0)-(earned[t.id]||0);t.k='ok';t.mine=1;}else if(o===false&&t.k==='ok'){pts-=(earned[t.id]||0);t.k='bad';t.mine=1;}});
  var grade=pts>=85?'Crushing it':pts>=70?'On track':pts>=50?'Watch it':'Off track';
  var order={bad:0,mid:1,ok:2};tips.sort(function(a,b){return order[a.k]-order[b.k];});
- return {score:Math.round(pts),grade:grade,tips:tips.slice(0,4)};
+ return {score:Math.round(pts),grade:grade,tips:tips};
 }
 function finalScore(rec){
  var tx=rec.tx||[],sp=spentMap(tx),pts=0,bud=rec.bud||{};
@@ -360,7 +363,7 @@ function vPlan(){
  h+='<div class="hero"><div class="eyebrow">Safe to spend today</div><div class="big serif">'+R(ss.perDay)+'</div><div class="sub">'+R(Math.max(0,ss.left))+' fun + buffer left for '+ss.days+' day'+(ss.days>1?'s':'')+' · payday '+(ss.pp.daysToPay===0?'today':'in '+ss.pp.daysToPay+' days')+'</div><div class="chips">'+(ss.fast?'<span class="hchip bad">Spending fast: '+Math.round(ss.usedPct*100)+'% used, '+Math.round(ss.pp.elapsed*100)+'% of month gone</span>':'<span class="hchip">On pace ✓ '+Math.round(ss.usedPct*100)+'% used · '+Math.round(ss.pp.elapsed*100)+'% of month gone</span>')+'</div></div>';
  h+=cardsHTML();
  // score
- h+='<div class="card"><div class="score">'+ring(sc.score)+'<div><h3>How you\'re doing</h3><h2 class="serif">'+sc.grade+'</h2><div class="mini">Score out of 100: pace, budgets, savings moved, save rate, bank check</div></div></div><ul class="tips">'+sc.tips.map(function(t){return '<li><b class="ic '+t.k+'">'+(t.k==='ok'?'✓':t.k==='mid'?'!':'✕')+'</b><span>'+t.t+'</span></li>';}).join('')+'</ul></div>';
+ h+='<div class="card"><div class="score">'+ring(sc.score)+'<div><h3>How you\'re doing</h3><h2 class="serif">'+sc.grade+'</h2><div class="mini">Score out of 100: pace, budgets, savings moved, save rate, bank check</div></div></div><ul class="tips">'+sc.tips.map(function(t){return '<li data-act="tipToggle" data-id="'+t.id+'" data-k="'+t.k+'" style="cursor:pointer"><b class="ic '+t.k+'">'+(t.k==='ok'?'✓':t.k==='mid'?'!':'✕')+'</b><span>'+t.t+(t.mine?' <span class="mini">· changed by you</span>':'')+'</span></li>';}).join('')+'</ul><div class="hint">Tap a ✓ or ✕ to change it yourself, e.g. if you already moved your savings. Resets each month.</div></div>';
  if(fuelDue())h+='<div class="alert info"><b>Fuel price changed this month</b>SA fuel prices change on the first Wednesday. Check the new price per litre and update it so your fuel budget is right.<div style="margin-top:10px"><button class="btn g sm" data-act="fuelPrice">Update fuel price</button></div></div>';
  if(c.warn&&c.warn.type==='deficit')h+='<div class="alert"><b>Your costs are '+R(c.warn.amount)+' more than what\'s coming in.</b>Goals are paused this month. Fun stays at '+R(st.funFloor)+'. Cut a cost or add income.</div>';
  else if(c.warn&&c.warn.type==='short')h+='<div class="alert"><b>You\'re '+R(c.warn.amount)+' short of fully funding your goals.</b><ul>'+c.warn.sug.map(function(s){return '<li>'+s+'</li>';}).join('')+'</ul></div>';
@@ -781,6 +784,9 @@ root.addEventListener('click',function(e){
  case 'addMenu':var m=modal('<h3 class="serif">Add</h3><div class="acts2" style="margin:0"><button class="btn g" data-m="scan">'+I.scan+'Scan total</button><button class="btn line" style="height:56px" data-m="manual">Type it in</button></div><button class="btn ghost" data-m="cost">+ New fixed expense</button><button class="btn ghost" data-m="extra">+ Extra money in</button>');m.addEventListener('click',function(ev){var bb=ev.target.closest('[data-m]');if(!bb)return;m.remove();var w=bb.dataset.m;if(w==='scan')scanFlow();else if(w==='cost')costSheet({freq:'monthly',days:30},true);else if(w==='extra'){S.current.extras.push({id:uid(),label:'',amount:'',to:'split'});tab='plan';save();}else txSheet({id:uid(),src:'manual'},true);});return;
  case 'scan':scanFlow();return;
  case 'hf':histFilter=a.dataset.v;rerender();return;
+ case 'tipToggle':S.current.tipDone=S.current.tipDone||{};var tid=a.dataset.id,cur=S.current.tipDone[tid];
+  if(cur!==undefined)delete S.current.tipDone[tid];else S.current.tipDone[tid]=a.dataset.k!=='ok';
+  save(S.current.tipDone[tid]===true?'Ticked off ✓':S.current.tipDone[tid]===false?'Marked as not done':'Back to automatic');return;
  case 'bankEdit':var bf=document.querySelector('[data-bank=actual]');if(bf){bf.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(function(){bf.focus();},400);}else{tab='plan';render();}return;
  case 'ccPay':var ci=ccInfo();sheet('Pay credit card',[{k:'amount',label:'How much are you paying off?',type:'money',value:ci.owed},{k:'limit',label:'Card limit',type:'money',value:ci.limit}],function(o){S.cc.limit=num(o.limit)||ci.limit;var a=num(o.amount);if(a>0){S.current.tx.push({id:uid(),src:'manual',at:Date.now(),amount:Math.round(a*100)/100,note:'Credit card payment',bucket:'ccpay',card:'debit',date:todayISO()});save(R(a)+' paid off. '+R(Math.max(0,ci.owed-a))+' still owed');}else save('Updated');},null,R(ci.owed)+' owed of '+R(ci.limit)+'. Paying it moves money from your debit account to the card. Your buckets don\'t change, because the purchases were already counted.','Pay it');return;
  case 'addTx':txSheet({id:uid(),src:'manual'},true);return;
