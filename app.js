@@ -86,7 +86,7 @@ try{S=JSON.parse(localStorage.getItem(LS_KEY)||'null');}catch(e){S=null;}
 var firstRun=!S;
 S=migrate(S);
 
-var tab='plan',moreSub='nw',openMonth=null,locked=false;
+var tab='plan',moreSub='nw',openMonth=null,locked=false,histFilter='all';
 var hh=(location.hash||'').slice(1);
 if(['plan','spend','goals','history','more'].indexOf(hh)>=0)tab=hh;
 
@@ -452,12 +452,30 @@ function vGoals(){
  return h;
 }
 
+function thisMonthCard(){
+ var txs=(S.current.tx||[]).slice().sort(function(a,b){return (b.date||'')<(a.date||'')?-1:(b.date||'')>(a.date||'')?1:(b.at||0)-(a.at||0);});
+ var tot={},spentAll=0;txs.forEach(function(t){tot[t.bucket]=(tot[t.bucket]||0)+num(t.amount);if(!isMove(t.bucket))spentAll+=num(t.amount);});
+ var keys=Object.keys(tot).sort(function(a,b){return tot[b]-tot[a];});
+ if(histFilter!=='all'&&histFilter!=='spend'&&!tot[histFilter])histFilter='all';
+ var shown=txs.filter(function(t){return histFilter==='all'||(histFilter==='spend'?!isMove(t.bucket):t.bucket===histFilter);});
+ var shownTot=shown.reduce(function(a,t){return a+num(t.amount);},0);
+ var h='<div class="card"><div class="card-h"><h3>'+ymL(S.current.month,true)+' · so far</h3><span class="mini">'+txs.length+' item'+(txs.length===1?'':'s')+'</span></div>';
+ h+='<div class="between" style="align-items:flex-end;margin-bottom:12px"><div><div class="mini">Spent this month</div><div class="serif" style="font-size:36px;line-height:1.05">'+R2(spentAll)+'</div></div><div style="text-align:right"><div class="mini">Showing</div><b>'+R2(shownTot)+'</b></div></div>';
+ if(!txs.length)return h+'<div class="hint" style="margin:0">Nothing logged this month yet. Tap + on the Plan or Spend tab after you buy something.</div></div>';
+ h+='<div class="chips" style="margin-bottom:6px"><button class="copt'+(histFilter==='all'?' on':'')+'" data-act="hf" data-v="all">All · '+R(sumObj(tot))+'</button><button class="copt'+(histFilter==='spend'?' on':'')+'" data-act="hf" data-v="spend">Spending only · '+R(spentAll)+'</button>'+keys.map(function(k){return '<button class="copt'+(histFilter===k?' on':'')+'" data-act="hf" data-v="'+esc(k)+'"><span class="dot" style="background:'+bucketColor(k)+'"></span>'+esc(targetName(k))+' · '+R(tot[k])+'</button>';}).join('')+'</div>';
+ var lastDate='';
+ shown.forEach(function(t){
+  if(t.date!==lastDate){lastDate=t.date;h+='<div class="mini" style="margin:14px 0 2px;font-weight:800;letter-spacing:.08em;text-transform:uppercase">'+(t.date===todayISO()?'Today':dL(t.date))+'</div>';}
+  h+='<div class="tx"><div class="l"><span class="dot" style="background:'+bucketColor(t.bucket)+'"></span><div><div class="n">'+esc(t.note||'(no description)')+'</div><div class="mini"><b style="color:var(--text);font-weight:700">'+esc(targetName(t.bucket))+'</b> · '+(t.card==='credit'?'Credit card':'Debit card')+(t.src==='auto'?' · auto':t.src==='scan'?' · scanned':'')+'</div></div></div><div class="row"><b>'+R2(t.amount)+'</b><button class="icon-btn" data-act="editTx" data-id="'+t.id+'" aria-label="Edit">'+I.edit+'</button></div></div>';});
+ return h+'</div>';
+}
 function monthSaved(x){return ((x.actual==null||x.actual==='')?x.plannedSave:num(x.actual))+sumObj(x.directed);}
 function vHistory(){
  var hs=S.history.slice().sort(function(a,b){return a.month<b.month?-1:1;}),h='',tot=0,plan=0;
  hs.forEach(function(x){tot+=monthSaved(x);plan+=x.plannedSave+sumObj(x.directed);});
  var avg=hs.length?Math.round(hs.reduce(function(a,x){return a+(x.score||finalScore(x));},0)/hs.length):0;
  h+='<div class="top"><div><div class="eyebrow">History</div><div class="bigt serif">'+R(tot)+'</div><div class="sub">saved + invested since you started</div></div>'+(hs.length?'<span class="chip '+(avg>=70?'g':avg>=50?'a':'r')+'">Avg score '+avg+'</span>':'')+'</div>';
+ h+=thisMonthCard();
  if(!hs.length){h+='<div class="card"><div class="chart">'+bars([2,3,2.5,4,3.5,5].map(function(v,i){return {label:MON[i],v:v*1000};}),true)+'</div><div class="hint" style="text-align:center">Lock in your first month on the Plan tab (on payday) and your history starts here.</div></div>';return h;}
  var last=hs.slice(-8);
  h+='<div class="card"><div class="card-h"><h3>Saved per month</h3><span class="mini">dashed = plan</span></div><div class="chart">'+bars(last.map(function(x){return {label:MON[ymP(x.month).m-1],v:monthSaved(x),plan:x.plannedSave+sumObj(x.directed)};}),false)+'</div></div>';
@@ -762,6 +780,7 @@ root.addEventListener('click',function(e){
  case 'removePin':if(a.dataset.sure){localStorage.removeItem(PIN_KEY);render();toast('PIN removed');}else{a.dataset.sure='1';a.textContent='Tap again';}return;
  case 'addMenu':var m=modal('<h3 class="serif">Add</h3><div class="acts2" style="margin:0"><button class="btn g" data-m="scan">'+I.scan+'Scan total</button><button class="btn line" style="height:56px" data-m="manual">Type it in</button></div><button class="btn ghost" data-m="cost">+ New fixed expense</button><button class="btn ghost" data-m="extra">+ Extra money in</button>');m.addEventListener('click',function(ev){var bb=ev.target.closest('[data-m]');if(!bb)return;m.remove();var w=bb.dataset.m;if(w==='scan')scanFlow();else if(w==='cost')costSheet({freq:'monthly',days:30},true);else if(w==='extra'){S.current.extras.push({id:uid(),label:'',amount:'',to:'split'});tab='plan';save();}else txSheet({id:uid(),src:'manual'},true);});return;
  case 'scan':scanFlow();return;
+ case 'hf':histFilter=a.dataset.v;rerender();return;
  case 'bankEdit':var bf=document.querySelector('[data-bank=actual]');if(bf){bf.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(function(){bf.focus();},400);}else{tab='plan';render();}return;
  case 'ccPay':var ci=ccInfo();sheet('Pay credit card',[{k:'amount',label:'How much are you paying off?',type:'money',value:ci.owed},{k:'limit',label:'Card limit',type:'money',value:ci.limit}],function(o){S.cc.limit=num(o.limit)||ci.limit;var a=num(o.amount);if(a>0){S.current.tx.push({id:uid(),src:'manual',at:Date.now(),amount:Math.round(a*100)/100,note:'Credit card payment',bucket:'ccpay',card:'debit',date:todayISO()});save(R(a)+' paid off. '+R(Math.max(0,ci.owed-a))+' still owed');}else save('Updated');},null,R(ci.owed)+' owed of '+R(ci.limit)+'. Paying it moves money from your debit account to the card. Your buckets don\'t change, because the purchases were already counted.','Pay it');return;
  case 'addTx':txSheet({id:uid(),src:'manual'},true);return;
