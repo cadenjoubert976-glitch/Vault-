@@ -671,7 +671,7 @@ function sheet(title,fields,onSave,onDelete,subtitle,okLabel){
  return el;
 }
 function modal(html){var el=document.createElement('div');el.className='sheet-bg';el.innerHTML='<div class="sheet">'+html+'</div>';document.body.appendChild(el);el.addEventListener('click',function(e){if(e.target===el)el.remove();});return el;}
-function txTargets(){var o=[];S.buckets.forEach(function(b){if(b.id==='goals')S.goals.forEach(function(g){o.push({v:'goal:'+g.id,label:g.name,c:bucketColor('goal:'+g.id)});});else o.push({v:b.id,label:b.name,c:bucketColor(b.id)});});return o;}
+function txTargets(){var o=[];S.buckets.forEach(function(b){if(b.id==='goals')S.goals.forEach(function(g){o.push({v:'goal:'+g.id,label:g.name,c:bucketColor('goal:'+g.id)});});else o.push({v:b.id,label:b.name,c:bucketColor(b.id)});});o.push({v:'paidfor',label:'Paid for someone (not mine)',c:bucketColor('paidfor')});return o;}
 
 /* after logging: "R200 sent to Fun · R300 left" */
 function sentCard(t){
