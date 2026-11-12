@@ -244,14 +244,17 @@ function pfInfo(){
  return {now:now,fromStatement:fromStatement,months:months,atMove:atMove,moveYM:dl.slice(0,7),potNow:now/3,potMove:atMove/3};
 }
 function stays(bucket){if(bucket==='emergency')return true;if(String(bucket).indexOf('goal:')===0){var g=findById(S.goals,bucket.slice(5));return !!(g&&g.inSplit);}return false;}
+function undated(list){return (list||[]).filter(function(e){return !e.date&&e.via!=='cash';}).reduce(function(a,e){return a+num(e.amount);},0);}
 function bankInfo(){
  var bk=S.bank,today=todayISO(),pd=S.settings.payday||25,inc=0,paydays=[],ym=String(bk.anchorDate).slice(0,7),guard=0;
  while(guard++<60){var d=ym+'-'+String(pd).padStart(2,'0');if(d>today)break;
   if(d>bk.anchorDate){var hr=null;S.history.forEach(function(h){if(h.month===ym)hr=h;});var amt;
-   if(hr)amt=hr.income+sumObj(hr.directed);
-   else{amt=num(S.current.salary)+num(S.current.dad);if(ym===S.current.month)amt+=S.current.extras.reduce(function(a,e){return a+num(e.amount);},0);}
+   if(hr)amt=num(hr.salary)+num(hr.dad)+undated(hr.extras);
+   else{amt=num(S.current.salary)+num(S.current.dad);if(ym===S.current.month)amt+=undated(S.current.extras);}
    inc+=amt;paydays.push({d:d,amt:amt});}
   ym=addM(ym,1);}
+ var ex=[];S.history.forEach(function(h){(h.extras||[]).forEach(function(e){ex.push(e);});});(S.current.extras||[]).forEach(function(e){ex.push(e);});
+ ex.forEach(function(e){if(!e.date||e.via==='cash'||e.date>today)return;if(e.date>bk.anchorDate||(e.date===bk.anchorDate&&(e.at||0)>bk.anchorAt)){inc+=num(e.amount);paydays.push({d:e.date,amt:num(e.amount),extra:1});}});
  var all=[];S.history.forEach(function(h){(h.tx||[]).forEach(function(t){all.push(t);});});(S.current.tx||[]).forEach(function(t){all.push(t);});
  var out=0,internal=0,items=[];
  all.forEach(function(t){var d=t.date||'',after=d?(d>bk.anchorDate||(d===bk.anchorDate&&(t.at||0)>bk.anchorAt)):(t.at||0)>bk.anchorAt;if(!after||t.card==='credit'||t.card==='cash'||t.card==='other')return;if(stays(t.bucket))internal+=num(t.amount);else{out+=num(t.amount);items.push(t);}});
@@ -407,7 +410,7 @@ function vPlan(){
  var bi=bankInfo(),ad=Math.abs(bi.diff);
  h+='<div class="card"><div class="card-h"><h3>Bank check</h3>'+(ad<10?'<span class="chip g">Spot on ✓</span>':bi.diff<0?'<span class="chip r">'+R(ad)+' missing</span>':'<span class="chip a">'+R(ad)+' extra</span>')+'</div>';
  h+='<div class="between" style="align-items:flex-end"><div><div class="mini">Should be in your bank</div><div class="serif" style="font-size:38px;line-height:1.05;margin-top:4px">'+R(bi.expected)+'</div></div><div style="text-align:right"><div class="mini" style="margin-bottom:6px">Actually in your bank</div><div class="money"><span>R</span><input inputmode="decimal" style="width:90px" data-bank="actual" value="'+esc(S.bank.actual)+'"></div></div></div>';
- h+='<div class="note">'+R2(S.bank.anchor)+' on '+dL(S.bank.anchorDate)+(bi.inc?' + '+R(bi.inc)+' pay':'')+' − '+R2(bi.out)+' logged out'+(bi.internal?' · '+R(bi.internal)+' moved to savings pockets':'')+' · <a href="#" class="gt" data-act="bankList">'+(bankOpen?'hide':'see what\'s counted')+'</a></div>';
+ h+='<div class="note">'+R2(S.bank.anchor)+' on '+dL(S.bank.anchorDate)+(bi.inc?' + '+R(bi.inc)+' money in':'')+' − '+R2(bi.out)+' logged out'+(bi.internal?' · '+R(bi.internal)+' moved to savings pockets':'')+' · <a href="#" class="gt" data-act="bankList">'+(bankOpen?'hide':'see what\'s counted')+'</a></div>';
  if(bankOpen){h+='<div style="margin-top:8px">'+(bi.items.length?bi.items.slice().sort(function(a,b){return (b.date||'')>(a.date||'')?1:-1;}).map(function(t){return '<div class="tx"><div class="l"><span class="dot" style="background:'+bucketColor(t.bucket)+'"></span><div><div class="n">'+esc(t.note||targetName(t.bucket))+'</div><div class="mini">'+dL(t.date)+' · '+esc(targetName(t.bucket))+(t.src==='auto'?' · auto':'')+'</div></div></div><div class="row"><b>−'+R2(t.amount)+'</b><button class="icon-btn" data-act="editTx" data-id="'+t.id+'">'+I.edit+'</button></div></div>';}).join(''):'<div class="hint">Nothing logged since then.</div>')+'<div class="hint">Something here that didn\'t actually leave your bank (yet), or happened before '+dL(S.bank.anchorDate)+'? Tap ✏️ to fix the date, change it to Credit/Cash, or delete it.</div></div>';}
  if(ad>=10)h+='<div class="note">'+(bi.diff<0?'Your bank has <b class="rt">'+R(ad)+' less</b> than expected. Something isn\'t logged: a debit order, a swipe or bank fees.':'Your bank has <b class="gt">'+R(ad)+' more</b> than expected. Maybe something was logged twice, or money came in that isn\'t on the plan.')+'</div>';
  h+='<div class="row" style="gap:8px;margin-top:12px"><button class="btn line" style="flex:1" data-act="debits">+ Log debit orders</button><button class="btn line" style="flex:1" data-act="reanchor">Start fresh today</button></div></div>';
@@ -419,8 +422,8 @@ function vPlan(){
  h+='<div class="field"><label>Dad<small>Monthly</small></label><div class="money"><span>R</span><input inputmode="decimal" data-cur="dad" value="'+esc(cur.dad)+'"></div></div>';
  if(c.rollTotal)h+='<div class="field"><label>Rolled over<small>Leftover from last month</small></label><b class="gt">'+R(c.rollTotal)+'</b></div>';
  var opts=[['split','Split it normally'],['emergency',B('emergency').name],['invest',B('invest').name+' (TFSA)']].concat(S.goals.map(function(g){return [g.id,'Goal: '+g.name];}));
- cur.extras.forEach(function(e){h+='<div style="padding:12px 0;border-bottom:1px solid var(--line)"><div class="row"><input class="txt" placeholder="What was it? (overtime, sale…)" data-extra="'+e.id+'" data-f="label" value="'+esc(e.label)+'"><div class="money"><span>R</span><input inputmode="decimal" style="width:80px" data-extra="'+e.id+'" data-f="amount" value="'+esc(e.amount)+'"></div></div><div class="row" style="margin-top:8px"><select class="txt" data-extra="'+e.id+'" data-f="to">'+opts.map(function(o){return '<option value="'+o[0]+'"'+((e.to||'split')===o[0]?' selected':'')+'>'+esc(o[1])+'</option>';}).join('')+'</select><button class="icon-btn" data-act="delExtra" data-id="'+e.id+'">'+I.x+'</button></div></div>';});
- h+='<button class="btn ghost" data-act="addExtra">+ Add extra money</button>'+(num(st.bonusTotal)>0?'<div class="hint">Bonus: '+MONL[num(st.bonusMonth)-1]+' pay day, '+R(st.bonusTotal)+' total. It shows up here by itself that month as "Annual bonus" (~'+R(bonusAmt())+' on top of salary). Point it at a goal or the TFSA if you like.</div>':'')+'</div>';
+ cur.extras.forEach(function(e){h+='<div style="padding:12px 0;border-bottom:1px solid var(--line)"><div class="row"><input class="txt" placeholder="What was it? (overtime, sale…)" data-extra="'+e.id+'" data-f="label" value="'+esc(e.label)+'"><div class="money"><span>R</span><input inputmode="decimal" style="width:80px" data-extra="'+e.id+'" data-f="amount" value="'+esc(e.amount)+'"></div></div>'+(e.date||e.via?'<div class="mini" style="margin-top:6px">'+(e.date?dL(e.date):'')+(e.via==='cash'?' · cash':e.via?' · into bank':'')+'</div>':'')+'<div class="row" style="margin-top:8px"><select class="txt" data-extra="'+e.id+'" data-f="to">'+opts.map(function(o){return '<option value="'+o[0]+'"'+((e.to||'split')===o[0]?' selected':'')+'>'+esc(o[1])+'</option>';}).join('')+'</select><button class="icon-btn" data-act="delExtra" data-id="'+e.id+'">'+I.x+'</button></div></div>';});
+ h+='<button class="btn ghost" data-act="addExtra">+ Money in (gift, sale, payback)</button>'+(num(st.bonusTotal)>0?'<div class="hint">Bonus: '+MONL[num(st.bonusMonth)-1]+' pay day, '+R(st.bonusTotal)+' total. It shows up here by itself that month as "Annual bonus" (~'+R(bonusAmt())+' on top of salary). Point it at a goal or the TFSA if you like.</div>':'')+'</div>';
  // fixed expenses with dates
  var ch=chargeItems(),fixedTot=c.fixed+c.biz;
  ch.forEach(function(x){if(x.day&&x.freq==='monthly')x.n=nextCharge(x.day);});
@@ -760,6 +763,17 @@ function scanFlow(){
  inp.click();
 }
 
+/* ---------- money in (gift, sale, payback) ---------- */
+function moneyInSheet(){
+ var to=[{v:'split',label:'Split it normally',c:bucketColor('fun')},{v:'emergency',label:B('emergency').name,c:bucketColor('emergency')},{v:'invest',label:B('invest').name+' (TFSA)',c:bucketColor('invest')}].concat(S.goals.map(function(g){return {v:g.id,label:g.name,c:bucketColor('goal:'+g.id)};}));
+ sheet('Money in',[{k:'amount',label:'How much',type:'money',value:''},{k:'who',label:'From who / what for',value:'',ph:'e.g. gift from Gran, sold airsoft kit'},{k:'via',label:'Got it as',type:'chips',options:[{v:'bank',label:'Into my bank',c:'#18A862'},{v:'cash',label:'Cash',c:'#9CCBB2'}],value:'bank'},{k:'to',label:'Where should it go?',type:'chips',options:to,value:'split'},{k:'date',label:'Date',type:'date',value:todayISO()}],function(o){
+  var a=num(o.amount);if(!(a>0)){toast('Add an amount');return false;}var now=Date.now(),d=o.date||todayISO();
+  S.current.extras.push({id:uid(),label:o.who||'Money in',amount:Math.round(a*100)/100,to:o.to||'split',date:d,via:o.via||'bank',at:now});
+  if(o.via==='cash')S.current.tx.push({id:uid(),src:'manual',at:now,amount:Math.round(a*100)/100,note:'Cash: '+(o.who||'money in'),bucket:'cashin',card:'other',date:d});
+  tab='plan';save(R(a)+(o.via==='cash'?' cash':' into your bank')+' added'+(o.to&&o.to!=='split'?' → '+targetName(o.to.indexOf('g_')===0?'goal:'+o.to:o.to):''));
+ },null,'Gifts, sales, someone paying you back. It gets added to this month\'s money in, and to your bank or cash.','Add it');
+}
+
 /* ---------- fixed cost sheets ---------- */
 function costSheet(c,isNew){
  var isFuel=!!c.fuel;
@@ -885,7 +899,7 @@ root.addEventListener('click',function(e){
  case 'lockNow':showLock();return;
  case 'setPin':setPinFlow();return;
  case 'removePin':if(a.dataset.sure){localStorage.removeItem(PIN_KEY);render();toast('PIN removed');}else{a.dataset.sure='1';a.textContent='Tap again';}return;
- case 'addMenu':var m=modal('<h3 class="serif">Add</h3><div class="acts2" style="margin:0"><button class="btn g" data-m="scan">'+I.scan+'Scan total</button><button class="btn line" style="height:56px" data-m="manual">Type it in</button></div><button class="btn ghost" data-m="cost">+ New fixed expense</button><button class="btn ghost" data-m="extra">+ Extra money in</button>');m.addEventListener('click',function(ev){var bb=ev.target.closest('[data-m]');if(!bb)return;m.remove();var w=bb.dataset.m;if(w==='scan')scanFlow();else if(w==='cost')costSheet({freq:'monthly',days:30},true);else if(w==='extra'){S.current.extras.push({id:uid(),label:'',amount:'',to:'split'});tab='plan';save();}else txSheet({id:uid(),src:'manual'},true);});return;
+ case 'addMenu':var m=modal('<h3 class="serif">Add</h3><div class="acts2" style="margin:0"><button class="btn g" data-m="scan">'+I.scan+'Scan total</button><button class="btn line" style="height:56px" data-m="manual">Type it in</button></div><button class="btn ghost" data-m="cost">+ New fixed expense</button><button class="btn ghost" data-m="extra">+ Someone gave me money / money in</button>');m.addEventListener('click',function(ev){var bb=ev.target.closest('[data-m]');if(!bb)return;m.remove();var w=bb.dataset.m;if(w==='scan')scanFlow();else if(w==='cost')costSheet({freq:'monthly',days:30},true);else if(w==='extra')moneyInSheet();else txSheet({id:uid(),src:'manual'},true);});return;
  case 'scan':scanFlow();return;
  case 'hf':histFilter=a.dataset.v;rerender();return;
  case 'stats':openStats();return;
@@ -905,7 +919,7 @@ root.addEventListener('click',function(e){
  case 'editTx':var tx=findById(S.current.tx,id);if(tx)txSheet(tx,false);else toast('That one is in a locked month');return;
  case 'cover':coverSheet(id);return;
  case 'delAdj':S.current.adj.splice(+a.dataset.i,1);save('Move undone');return;
- case 'addExtra':S.current.extras.push({id:uid(),label:'',amount:'',to:'split'});save();return;
+ case 'addExtra':moneyInSheet();return;
  case 'delExtra':S.current.extras=S.current.extras.filter(function(x){return x.id!==id;});save();return;
  case 'addCost':costSheet({freq:'monthly',days:30},true);return;
  case 'editCost':var ec=findById(S.costs,id);if(ec)costSheet(ec,false);return;
