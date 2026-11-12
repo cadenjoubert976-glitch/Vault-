@@ -217,6 +217,9 @@ nav button.on{color:var(--g)}
 .pc-sub{font-size:9.5px;opacity:.8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pc-bar{height:4px;border-radius:9px;background:rgba(255,255,255,.18);margin-top:5px;overflow:hidden}
 .pc-bar i{display:block;height:100%;border-radius:9px}
+.stats{position:fixed;inset:0;z-index:35;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch;animation:up .3s cubic-bezier(.2,.8,.2,1)}
+.stats-in{max-width:540px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 14px) 16px calc(env(safe-area-inset-bottom) + 40px)}
+input,select,textarea{font-size:16px!important}
 .view{animation:fade .3s}
 .foot{color:var(--dim);font-size:11px;text-align:center;line-height:1.5;margin:22px 8px 0}
 .danger{color:var(--red)!important;border-color:var(--red)!important}
@@ -226,6 +229,6 @@ nav button.on{color:var(--g)}
 </head>
 <body>
 <div id="root"></div>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>
