@@ -74,6 +74,7 @@ function migrate(o){
  if(!o.settings.fuelMonth)o.settings.fuelMonth=thisYM();
  if(!o.cc)o.cc={limit:1000,owedStart:num((o.nw||{}).cc)||0,startAt:Date.now()};
  if(!o.autoPosted)o.autoPosted={};
+ if(!o.cash)o.cash={start:0,startAt:Date.now()};
  o.costs.forEach(function(c){
   if(!c.id)c.id=uid();
   if(c.fuel===undefined&&/fuel|petrol/i.test(c.name||'')&&c.freq==='monthly'){c.fuel=true;c.litres=Math.round(num(c.amount)/(o.settings.fuelPrice||30)*10)/10;}
@@ -102,8 +103,8 @@ function ratioOf(h){if(h.actual==null||h.actual==='')return 1;var p=h.plannedSav
 function goalSaved(g,before){var s=num(g.saved);S.history.forEach(function(h){if(before&&h.month>=before)return;var r=ratioOf(h);s+=((h.goalAlloc&&h.goalAlloc[g.id])||0)*r+((h.directed&&h.directed[g.id])||0);});return s;}
 function efSaved(before){var s=num(S.ef.saved);S.history.forEach(function(h){if(before&&h.month>=before)return;var r=ratioOf(h);s+=((h.alloc&&h.alloc.emergency)||0)*r+((h.directed&&h.directed.emergency)||0);});return s;}
 function bucketColor(id){var p=pal();if(String(id).indexOf('goal:')===0)return p.goals;if(p[id])return p[id];var cs=S.buckets.filter(function(b){return b.custom;});var i=cs.findIndex(function(b){return b.id===id;});return p.extra[(i<0?0:i)%p.extra.length];}
-function isMove(id){return id==='ccpay'||id==='business'||id==='emergency'||id==='invest'||id==='goals'||String(id).indexOf('goal:')===0;}
-function targetName(v){if(v==='ccpay')return 'Credit card payment';if(String(v).indexOf('goal:')===0){var g=findById(S.goals,v.slice(5));return g?g.name:'Goal';}return B(v).name;}
+function isMove(id){return id==='cashin'||id==='ccpay'||id==='business'||id==='emergency'||id==='invest'||id==='goals'||String(id).indexOf('goal:')===0;}
+function targetName(v){if(v==='ccpay')return 'Credit card payment';if(v==='cashin')return 'Cash in';if(String(v).indexOf('goal:')===0){var g=findById(S.goals,v.slice(5));return g?g.name:'Goal';}return B(v).name;}
 
 function compute(){
  var st=S.settings,cur=S.current,m=cur.month;
@@ -252,7 +253,7 @@ function bankInfo(){
   ym=addM(ym,1);}
  var all=[];S.history.forEach(function(h){(h.tx||[]).forEach(function(t){all.push(t);});});(S.current.tx||[]).forEach(function(t){all.push(t);});
  var out=0,internal=0;
- all.forEach(function(t){var after=t.at?t.at>bk.anchorAt:(t.date||'')>bk.anchorDate;if(!after||t.card==='credit')return;if(stays(t.bucket))internal+=num(t.amount);else out+=num(t.amount);});
+ all.forEach(function(t){var after=t.at?t.at>bk.anchorAt:(t.date||'')>bk.anchorDate;if(!after||t.card==='credit'||t.card==='cash'||t.card==='other')return;if(stays(t.bucket))internal+=num(t.amount);else out+=num(t.amount);});
  var expected=num(bk.anchor)+inc-out;
  return {expected:expected,inc:inc,out:out,internal:internal,paydays:paydays,diff:num(bk.actual)-expected};
 }
@@ -266,10 +267,19 @@ function autoPost(){
   S.current.tx.push({id:uid(),src:'auto',amount:Math.round(x.amt*100)/100,note:x.name,bucket:x.biz?'business':'fixed',card:x.card==='credit'?'credit':'debit',date:d,at:new Date(d+'T08:00:00').getTime()});});
  if(changed){S.updatedAt=Date.now();try{localStorage.setItem(LS_KEY,JSON.stringify(S));}catch(e){}}
 }
+function cashInfo(){var c=S.cash,b=num(c.start);allTx().forEach(function(t){if((t.at||0)<=c.startAt)return;if(t.bucket==='cashin')b+=num(t.amount);else if(t.card==='cash')b-=num(t.amount);});return Math.round(b*100)/100;}
+function cashFlow(){
+ var bal=cashInfo(),m=modal('<h3 class="serif">Cash on hand</h3><div class="sub2">'+R2(bal)+' in your wallet. Cash buys come off here, not your bank.</div><button class="btn g block" data-cs="atm">Took cash from the ATM</button><button class="btn line block" style="margin-top:8px" data-cs="got">Got cash (sale, gift, change)</button><button class="btn line block" style="margin-top:8px" data-cs="count">Counted my cash: set the amount</button>');
+ m.addEventListener('click',function(e){var b=e.target.closest('[data-cs]');if(!b)return;m.remove();var w=b.dataset.cs;
+  if(w==='count'){sheet('How much cash do you have?',[{k:'amount',label:'Cash in your wallet',type:'money',value:bal}],function(o){S.cash.start=num(o.amount);S.cash.startAt=Date.now();save('Cash set to '+R2(num(o.amount)));});return;}
+  sheet(w==='atm'?'ATM withdrawal':'Cash in',[{k:'amount',label:'How much',type:'money',value:''},{k:'note',label:'What was it',value:w==='atm'?'ATM withdrawal':'',ph:'e.g. sold airsoft kit'}],function(o){var a=num(o.amount);if(!(a>0)){toast('Add an amount');return false;}
+   S.current.tx.push({id:uid(),src:'manual',at:Date.now(),amount:Math.round(a*100)/100,note:o.note||(w==='atm'?'ATM withdrawal':'Cash in'),bucket:'cashin',card:w==='atm'?'debit':'other',date:todayISO()});save(R(a)+' added to cash'+(w==='atm'?', taken off your bank':''));},null,w==='atm'?'Moves money from your bank to your wallet. Your buckets don\'t change; log what you buy with it as Cash.':'Cash that didn\'t come from your bank. Sales for the MacBook? Also add them under Money in → extra money.');
+ });
+}
 function cardsHTML(){var bi=bankInfo(),cc=ccInfo(),pc=Math.min(100,cc.pct*100),col=cc.pct<=0.3?'#3FDC8C':cc.pct<=0.7?'#E3A73A':'#F0675A';
  var chip='<i class="emv"></i>',wave='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="1.8"><path d="M8 7a7 7 0 010 10M12 5a10 10 0 010 14M16 3a13 13 0 010 18"/></svg>';
- return '<div class="cards"><div class="pcard debit" data-act="bankEdit"><div class="pc-top"><b>DEBIT</b>'+wave+'</div>'+chip+'<div><div class="pc-amt serif">'+R2(S.bank.actual)+'</div><div class="pc-sub">in your bank · should be '+R(bi.expected)+'</div></div></div><div class="pcard credit" data-act="ccPay"><div class="pc-top"><b>CREDIT</b>'+wave+'</div>'+chip+'<div><div class="pc-amt serif">'+R(cc.avail)+' <small>left</small></div><div class="pc-bar"><i style="width:'+pc.toFixed(1)+'%;background:'+col+'"></i></div><div class="pc-sub">'+R(cc.owed)+' of '+R(cc.limit)+' used · tap to pay</div></div></div></div>';}
-function netWorth(){var p=pfInfo(),inPF=!!S.nw.includePF;var items=[{k:'Bank (all accounts)',v:num(S.bank.actual)},{k:'TFSA / investments',v:num(S.nw.tfsa)},{k:'Provident fund'+(p.fromStatement?'':' (est.)'),v:p.now,off:!inPF},{k:S.nw.otherLabel||'Other assets',v:num(S.nw.other)},{k:'Credit card owed',v:-ccInfo().owed}];return {items:items,total:items.reduce(function(a,i){return a+(i.off?0:i.v);},0)};}
+ return '<div class="cards"><div class="pcard debit" data-act="bankEdit"><div class="pc-top"><b>DEBIT</b>'+wave+'</div>'+chip+'<div><div class="pc-amt serif">'+R2(S.bank.actual)+'</div><div class="pc-sub">in your bank · should be '+R(bi.expected)+'</div></div></div><div class="pcard credit" data-act="ccPay"><div class="pc-top"><b>CREDIT</b>'+wave+'</div>'+chip+'<div><div class="pc-amt serif">'+R(cc.avail)+' <small>left</small></div><div class="pc-bar"><i style="width:'+pc.toFixed(1)+'%;background:'+col+'"></i></div><div class="pc-sub">'+R(cc.owed)+' of '+R(cc.limit)+' used · tap to pay</div></div></div><div class="pcard cash" data-act="cash"><div><div class="pc-top"><b>CASH</b></div><div class="pc-amt serif">'+R2(cashInfo())+'</div></div><div class="pc-sub" style="text-align:right">on hand<br>tap to update</div></div></div>';}
+function netWorth(){var p=pfInfo(),inPF=!!S.nw.includePF;var items=[{k:'Bank (all accounts)',v:num(S.bank.actual)},{k:'Cash on hand',v:cashInfo()},{k:'TFSA / investments',v:num(S.nw.tfsa)},{k:'Provident fund'+(p.fromStatement?'':' (est.)'),v:p.now,off:!inPF},{k:S.nw.otherLabel||'Other assets',v:num(S.nw.other)},{k:'Credit card owed',v:-ccInfo().owed}];return {items:items,total:items.reduce(function(a,i){return a+(i.off?0:i.v);},0)};}
 function chargeItems(){var l=S.costs.map(function(x){return {id:x.id,name:x.name,amt:costEach(x),freq:x.fuel?'fuel':x.freq,day:x.day,card:x.card,biz:false,days:x.days,prev:x.prevAmount,cost:x};});var b=B('business');if(num(b.amount)>0)l.unshift({id:'business',name:b.name+' debit order',amt:num(b.amount),freq:'monthly',day:b.day,card:b.card||'order',biz:true});return l;}
 function nextCharge(day){var t=new Date(),y=t.getFullYear(),m=t.getMonth();function mk(yy,mm){var last=new Date(yy,mm+1,0).getDate();return new Date(yy,mm,Math.min(day,last));}var today=new Date(y,m,t.getDate()),d=mk(y,m),passed=d<today,nx=passed?mk(y,m+1):d;return {passed:passed,next:nx,days:Math.round((nx-today)/864e5)};}
 function firstWednesday(){var t=new Date(),d=new Date(t.getFullYear(),t.getMonth(),1);while(d.getDay()!==3)d.setDate(d.getDate()+1);return d;}
@@ -446,7 +456,7 @@ function vSpend(){
  var txs=S.current.tx.slice().sort(function(a,b){return (b.date||'')<(a.date||'')?-1:(b.date||'')>(a.date||'')?1:(b.at||0)-(a.at||0);});
  h+='<div class="card"><div class="card-h"><h3>This month</h3><span class="mini">'+txs.length+' item'+(txs.length===1?'':'s')+'</span></div>';
  if(!txs.length)h+='<div class="hint" style="margin:0">Nothing logged yet. Tap + after you buy something.</div>';
- txs.forEach(function(t){h+='<div class="tx"><div class="l"><span class="dot" style="background:'+bucketColor(t.bucket)+'"></span><div><div class="n">'+esc(t.note||targetName(t.bucket))+'</div><div class="mini">'+esc(targetName(t.bucket))+' · '+(t.date?dL(t.date):'')+(t.card==='credit'?' · credit':'')+(t.src==='scan'?' · scanned':'')+(t.src==='auto'?' · auto':'')+'</div></div></div><div class="row"><b>'+R2(t.amount)+'</b><button class="icon-btn" data-act="editTx" data-id="'+t.id+'">'+I.edit+'</button></div></div>';});
+ txs.forEach(function(t){h+='<div class="tx"><div class="l"><span class="dot" style="background:'+bucketColor(t.bucket)+'"></span><div><div class="n">'+esc(t.note||targetName(t.bucket))+'</div><div class="mini">'+esc(targetName(t.bucket))+' · '+(t.date?dL(t.date):'')+(t.card==='credit'?' · credit':t.card==='cash'?' · cash':'')+(t.src==='scan'?' · scanned':'')+(t.src==='auto'?' · auto':'')+'</div></div></div><div class="row"><b>'+R2(t.amount)+'</b><button class="icon-btn" data-act="editTx" data-id="'+t.id+'">'+I.edit+'</button></div></div>';});
  h+='</div>';
  if((S.current.adj||[]).length)h+='<div class="card"><div class="card-h"><h3>Money moved between buckets</h3></div>'+S.current.adj.map(function(a,i){return '<div class="tx"><div class="l"><div><div class="n">'+R(a.amount)+' · '+esc(targetName(a.from))+' → '+esc(targetName(a.to))+'</div></div></div><button class="icon-btn" data-act="delAdj" data-i="'+i+'">'+I.x+'</button></div>';}).join('')+'</div>';
  return h;
@@ -487,7 +497,7 @@ function thisMonthCard(){
  var lastDate='';
  shown.forEach(function(t){
   if(t.date!==lastDate){lastDate=t.date;h+='<div class="mini" style="margin:14px 0 2px;font-weight:800;letter-spacing:.08em;text-transform:uppercase">'+(t.date===todayISO()?'Today':dL(t.date))+'</div>';}
-  h+='<div class="tx"><div class="l"><span class="dot" style="background:'+bucketColor(t.bucket)+'"></span><div><div class="n">'+esc(t.note||'(no description)')+'</div><div class="mini"><b style="color:var(--text);font-weight:700">'+esc(targetName(t.bucket))+'</b> · '+(t.card==='credit'?'Credit card':'Debit card')+(t.src==='auto'?' · auto':t.src==='scan'?' · scanned':'')+'</div></div></div><div class="row"><b>'+R2(t.amount)+'</b><button class="icon-btn" data-act="editTx" data-id="'+t.id+'" aria-label="Edit">'+I.edit+'</button></div></div>';});
+  h+='<div class="tx"><div class="l"><span class="dot" style="background:'+bucketColor(t.bucket)+'"></span><div><div class="n">'+esc(t.note||'(no description)')+'</div><div class="mini"><b style="color:var(--text);font-weight:700">'+esc(targetName(t.bucket))+'</b> · '+(t.card==='credit'?'Credit card':t.card==='cash'?'Cash':t.card==='other'?'Other':'Debit card')+(t.src==='auto'?' · auto':t.src==='scan'?' · scanned':'')+'</div></div></div><div class="row"><b>'+R2(t.amount)+'</b><button class="icon-btn" data-act="editTx" data-id="'+t.id+'" aria-label="Edit">'+I.edit+'</button></div></div>';});
  return h+'</div>';
 }
 function monthSaved(x){return ((x.actual==null||x.actual==='')?x.plannedSave:num(x.actual))+sumObj(x.directed);}
@@ -674,7 +684,7 @@ function txSheet(t,isNew,sub,sugg,cands){
  if(isNew&&!cands){var q=recentQuick();if(q.length)fields.push({type:'html',html:'<div class="f"><label style="display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:800;margin-bottom:6px">Repeat a recent one</label><div class="chips">'+q.map(function(x){return '<button type="button" class="copt" data-quick="'+esc(JSON.stringify(x))+'">'+esc(trunc(x.note,18))+' · '+R(x.amount)+'</button>';}).join('')+'</div></div>'});}
  fields.push({k:'amount',label:'Amount',type:'money',value:t.amount==null?'':t.amount,ph:'0.00'});
  if(cands&&cands.length>1)fields.push({type:'html',html:'<div class="f"><label style="display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:800;margin-bottom:6px">Other amounts I saw: tap the right one</label><div class="chips">'+cands.map(function(v){return '<button type="button" class="copt" data-fill="amount" data-v="'+v.toFixed(2)+'">'+R2(v)+'</button>';}).join('')+'</div></div>'});
- fields.push({k:'note',label:'What was it',value:t.note||'',ph:'e.g. takeaways, fuel'},{k:'bucket',label:'Which bucket',type:'chips',options:txTargets(),value:t.bucket||'',sugg:sugg},{k:'card',label:'Paid with',type:'chips',options:[{v:'debit',label:'Debit card',c:'#18A862'},{v:'credit',label:'Credit card',c:'#2a2f2c'}],value:t.card||S.lastCard||'debit'},{k:'date',label:'Date',type:'date',value:t.date||todayISO()});
+ fields.push({k:'note',label:'What was it',value:t.note||'',ph:'e.g. takeaways, fuel'},{k:'bucket',label:'Which bucket',type:'chips',options:txTargets(),value:t.bucket||'',sugg:sugg},{k:'card',label:'Paid with',type:'chips',options:[{v:'debit',label:'Debit card',c:'#18A862'},{v:'credit',label:'Credit card',c:'#2a2f2c'},{v:'cash',label:'Cash',c:'#9CCBB2'}],value:t.card||S.lastCard||'debit'},{k:'date',label:'Date',type:'date',value:t.date||todayISO()});
  sheet(isNew?'What was it for?':'Edit purchase',fields,function(o){
   if(!(num(o.amount)>0)){toast('Add an amount');return false;}
   if(!o.bucket){toast('Pick a bucket');return false;}
@@ -868,6 +878,7 @@ root.addEventListener('click',function(e){
  case 'scan':scanFlow();return;
  case 'hf':histFilter=a.dataset.v;rerender();return;
  case 'stats':openStats();return;
+ case 'cash':cashFlow();return;
  case 'togglePF':S.nw.includePF=!S.nw.includePF;save(S.nw.includePF?'Provident fund counted':'Provident fund not counted');return;
  case 'tipToggle':S.current.tipDone=S.current.tipDone||{};var tid=a.dataset.id,cur=S.current.tipDone[tid];
   if(cur!==undefined)delete S.current.tipDone[tid];else S.current.tipDone[tid]=a.dataset.k!=='ok';

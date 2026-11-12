@@ -210,6 +210,8 @@ nav button.on{color:var(--g)}
 .pcard:after{content:"";position:absolute;right:-40px;top:-50px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.16),transparent 70%)}
 .pcard.debit{background:linear-gradient(135deg,#1DB46A,#0B5E37 75%)}
 .pcard.credit{background:linear-gradient(135deg,#323834,#0A0D0B 75%);border:1px solid rgba(255,255,255,.08)}
+.pcard.cash{grid-column:1/-1;aspect-ratio:auto;flex-direction:row;align-items:center;padding:10px 14px;background:linear-gradient(135deg,#D7EEDF,#8CC5A6 80%);color:#0B2A1A}
+.pcard.cash .pc-amt{font-size:24px}
 .pc-top{display:flex;justify-content:space-between;align-items:center;font-size:10px;letter-spacing:.2em}
 .emv{display:block;width:26px;height:19px;border-radius:5px;background:linear-gradient(135deg,#E8D9A8,#B89B52);box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
 .pc-amt{font-size:22px;line-height:1.05}
@@ -229,6 +231,6 @@ input,select,textarea{font-size:16px!important}
 </head>
 <body>
 <div id="root"></div>
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
