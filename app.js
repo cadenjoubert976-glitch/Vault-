@@ -285,6 +285,24 @@ function donut(slices,cVal,cLbl,size){
  slices.forEach(function(s){var ang=s.v/total*Math.PI*2,a1=a0+ang,sA=a0+gap/2,eA=a1-gap/2;if(ang>=Math.PI*2-0.001)eA=sA+Math.PI*2-0.0005;if(eA<=sA)eA=sA+0.002;out+='<path d="'+arc(cx,cy,ro,ri,sA,eA)+'" fill="'+s.c+'"><title>'+esc(s.n)+' '+R(s.v)+'</title></path>';var pc=s.v/total*100;if(pc>=3.5&&!s.noPct){var md=(a0+a1)/2,lr=(ro+ri)/2,hx=s.c.replace('#','');var lum=(0.299*parseInt(hx.substr(0,2),16)+0.587*parseInt(hx.substr(2,2),16)+0.114*parseInt(hx.substr(4,2),16))/255;out+='<text x="'+(cx+Math.cos(md)*lr).toFixed(1)+'" y="'+(cy+Math.sin(md)*lr).toFixed(1)+'" text-anchor="middle" dominant-baseline="central" style="font-size:'+(size*(pc>=7?0.062:0.046))+'px;font-weight:800;fill:'+(lum>0.55?'#0A0A0A':'#FFFFFF')+'">'+Math.round(pc)+'%</text>';}a0=a1;});
  return '<svg viewBox="0 0 '+size+' '+size+'">'+out+'<text x="'+cx+'" y="'+(cy+2)+'" text-anchor="middle" class="serif" style="font-size:'+(size*0.15)+'px;fill:var(--text)">'+esc(cVal)+'</text><text x="'+cx+'" y="'+(cy+size*0.13)+'" text-anchor="middle" style="font-size:'+(size*0.055)+'px;letter-spacing:.15em;font-weight:800;fill:var(--muted)">'+esc(cLbl)+'</text></svg>';
 }
+/* donut with % labels outside the ring, joined by leader lines */
+function donutCall(slices,cVal,cLbl){
+ var W=200,H=200,cx=100,cy=100,ro=50,ri=32;
+ slices=slices.filter(function(s){return s.v>0.5;});
+ var total=slices.reduce(function(a,s){return a+s.v;},0)||1,a0=-Math.PI/2,gap=slices.length>1?0.03:0,paths='',calls=[];
+ if(!slices.length)paths='<circle cx="'+cx+'" cy="'+cy+'" r="'+((ro+ri)/2)+'" fill="none" stroke="'+pal().unused+'" stroke-width="'+(ro-ri)+'"/>';
+ slices.forEach(function(s){var ang=s.v/total*Math.PI*2,a1=a0+ang,sA=a0+gap/2,eA=a1-gap/2;if(ang>=Math.PI*2-0.001)eA=sA+Math.PI*2-0.0005;if(eA<=sA)eA=sA+0.002;
+  paths+='<path d="'+arc(cx,cy,ro,ri,sA,eA)+'" fill="'+s.c+'"><title>'+esc(s.n)+' '+R(s.v)+'</title></path>';
+  var pc=s.v/total*100,mid=(a0+a1)/2;if(!s.noPct&&pc>=0.5)calls.push({pc:pc,mid:mid,c:s.c,side:Math.cos(mid)>=0?1:-1,y:cy+Math.sin(mid)*(ro+13)});a0=a1;});
+ [1,-1].forEach(function(side){var arr=calls.filter(function(c){return c.side===side;}).sort(function(a,b){return a.y-b.y;}),g=14,top=10,bot=H-8,i;
+  for(i=0;i<arr.length;i++)arr[i].ly=i===0?Math.max(top,arr[i].y):Math.max(arr[i].y,arr[i-1].ly+g);
+  for(i=arr.length-1;i>=0;i--)arr[i].ly=i===arr.length-1?Math.min(arr[i].ly,bot):Math.min(arr[i].ly,arr[i+1].ly-g);});
+ var lines='',txt='';
+ calls.forEach(function(c){var ex=cx+Math.cos(c.mid)*(ro+2),ey=cy+Math.sin(c.mid)*(ro+2),kx=cx+c.side*(ro+11),tx=cx+c.side*(ro+19);
+  lines+='<polyline points="'+ex.toFixed(1)+','+ey.toFixed(1)+' '+kx+','+c.ly.toFixed(1)+' '+(tx-c.side*3)+','+c.ly.toFixed(1)+'" fill="none" stroke="var(--muted)" stroke-width=".8" opacity=".7"/><circle cx="'+ex.toFixed(1)+'" cy="'+ey.toFixed(1)+'" r="1.6" fill="'+c.c+'"/>';
+  txt+='<text x="'+tx+'" y="'+c.ly.toFixed(1)+'" dominant-baseline="central" text-anchor="'+(c.side>0?'start':'end')+'" style="font-size:10.5px;font-weight:800;fill:var(--text)">'+(c.pc<1?'<1':Math.round(c.pc))+'%</text>';});
+ return '<svg viewBox="0 0 '+W+' '+H+'">'+lines+paths+txt+'<text x="'+cx+'" y="'+(cy+2)+'" text-anchor="middle" class="serif" style="font-size:17px;fill:var(--text)">'+esc(cVal)+'</text><text x="'+cx+'" y="'+(cy+15)+'" text-anchor="middle" style="font-size:7px;letter-spacing:.15em;font-weight:800;fill:var(--muted)">'+esc(cLbl)+'</text></svg>';
+}
 function niceStep(x){if(x<=0)return 1;var p=Math.pow(10,Math.floor(Math.log10(x))),n=x/p;return (n<=1?1:n<=2?2:n<=5?5:10)*p;}
 function bars(items,ghost){
  var W=360,H=220,pl=40,pr=8,pt=20,pb=28,ih=H-pt-pb;
@@ -347,7 +365,7 @@ function planVsActual(c,rows,title){
  var planTotal=planSl.reduce(function(a,s){return a+s.v;},0);
  if(planTotal-used>0)actSl.push({n:'Not used yet',v:planTotal-used,c:p.unused,noPct:true});
  leg='<div class="legend"><div class="lr h"><span>Bucket</span><span>Plan</span><span>Now</span></div>'+rows.filter(function(r){return r.budget>0||r.used>0;}).map(function(r){var ov=!r.move&&r.used>r.budget+0.5;var pp=planTotal>0?Math.round(r.budget/planTotal*100):0,up=r.budget>0?Math.round(r.used/r.budget*100):(r.used>0?100:0);return '<div class="lr"><span class="bname"><span class="dot" style="background:'+bucketColor(r.id)+'"></span>'+esc(r.name)+'</span><span>'+R(r.budget)+'<small class="pc">'+pp+'% of plan</small></span><span class="'+(ov?'rt':r.used>0?'gt':'')+'">'+R(r.used)+'<small class="pc">'+up+(r.move?'% moved':'% used')+'</small></span></div>';}).join('')+'</div>';
- return '<div class="card"><div class="card-h"><h3>'+(title||'Plan vs now')+'</h3>'+(title?'<span class="mini">'+R(used)+' used</span>':'<button class="btn soft sm" data-act="stats">Stats &amp; forecast →</button>')+'</div><div class="duo"'+(title?'':' data-act="stats" style="cursor:pointer"')+'><div>'+donut(planSl,R(planTotal),'PLAN')+'<div class="lbl">WHAT IT SHOULD BE</div></div><div>'+donut(actSl,R(used),'USED')+'<div class="lbl">WHAT IT IS NOW</div></div></div>'+leg+'</div>';
+ return '<div class="card"><div class="card-h"><h3>'+(title||'Plan vs now')+'</h3>'+(title?'<span class="mini">'+R(used)+' used</span>':'<button class="btn soft sm" data-act="stats">Stats &amp; forecast →</button>')+'</div><div class="duo"'+(title?'':' data-act="stats" style="cursor:pointer"')+'><div>'+donutCall(planSl,R(planTotal),'PLAN')+'<div class="lbl">WHAT IT SHOULD BE</div></div><div>'+donutCall(actSl,R(used),'USED')+'<div class="lbl">WHAT IT IS NOW</div></div></div>'+leg+'</div>';
 }
 function perfCard(rows,title){
  var h='<div class="card"><div class="card-h"><h3>'+(title||'Performance')+'</h3><span class="mini">green = within budget · red = over</span></div>';
