@@ -75,6 +75,7 @@ function migrate(o){
  if(!o.cc)o.cc={limit:1000,owedStart:num((o.nw||{}).cc)||0,startAt:Date.now()};
  if(!o.autoPosted)o.autoPosted={};
  if(!o.cash)o.cash={start:0,startAt:Date.now()};
+ if(!o.merchants)o.merchants={};
  if(o.settings.bonusMonth==null)o.settings.bonusMonth=2;if(o.settings.bonusTotal==null)o.settings.bonusTotal=0;
  o.costs.forEach(function(c){
   if(!c.id)c.id=uid();
@@ -411,7 +412,7 @@ function vPlan(){
  h+='<div class="card"><div class="card-h"><h3>Bank check</h3>'+(ad<10?'<span class="chip g">Spot on ✓</span>':bi.diff<0?'<span class="chip r">'+R(ad)+' missing</span>':'<span class="chip a">'+R(ad)+' extra</span>')+'</div>';
  h+='<div class="between" style="align-items:flex-end"><div><div class="mini">Should be in your bank</div><div class="serif" style="font-size:38px;line-height:1.05;margin-top:4px">'+R(bi.expected)+'</div></div><div style="text-align:right"><div class="mini" style="margin-bottom:6px">Actually in your bank</div><div class="money"><span>R</span><input inputmode="decimal" style="width:90px" data-bank="actual" value="'+esc(S.bank.actual)+'"></div></div></div>';
  h+='<div class="note">'+R2(S.bank.anchor)+' on '+dL(S.bank.anchorDate)+(bi.inc?' + '+R(bi.inc)+' money in':'')+' − '+R2(bi.out)+' logged out'+(bi.internal?' · '+R(bi.internal)+' moved to savings pockets':'')+' · <a href="#" class="gt" data-act="bankList">'+(bankOpen?'hide':'see what\'s counted')+'</a></div>';
- if(bankOpen){h+='<div style="margin-top:8px">'+(bi.items.length?bi.items.slice().sort(function(a,b){return (b.date||'')>(a.date||'')?1:-1;}).map(function(t){return '<div class="tx"><div class="l"><span class="dot" style="background:'+bucketColor(t.bucket)+'"></span><div><div class="n">'+esc(t.note||targetName(t.bucket))+'</div><div class="mini">'+dL(t.date)+' · '+esc(targetName(t.bucket))+(t.src==='auto'?' · auto':'')+'</div></div></div><div class="row"><b>−'+R2(t.amount)+'</b><button class="icon-btn" data-act="editTx" data-id="'+t.id+'">'+I.edit+'</button></div></div>';}).join(''):'<div class="hint">Nothing logged since then.</div>')+'<div class="hint">Something here that didn\'t actually leave your bank (yet), or happened before '+dL(S.bank.anchorDate)+'? Tap ✏️ to fix the date, change it to Credit/Cash, or delete it.</div></div>';}
+ if(bankOpen){h+='<div style="margin-top:8px">'+(bi.items.length?bi.items.slice().sort(function(a,b){return (b.date||'')>(a.date||'')?1:-1;}).map(function(t){return '<div class="tx"><div class="l"><span class="dot" style="background:'+bucketColor(t.bucket)+'"></span><div><div class="n">'+esc(t.note||targetName(t.bucket))+'</div><div class="mini">'+dL(t.date)+' · '+esc(targetName(t.bucket))+(t.src==='auto'?' · auto':t.src==='wallet'?' · Apple Pay':'')+'</div></div></div><div class="row"><b>−'+R2(t.amount)+'</b><button class="icon-btn" data-act="editTx" data-id="'+t.id+'">'+I.edit+'</button></div></div>';}).join(''):'<div class="hint">Nothing logged since then.</div>')+'<div class="hint">Something here that didn\'t actually leave your bank (yet), or happened before '+dL(S.bank.anchorDate)+'? Tap ✏️ to fix the date, change it to Credit/Cash, or delete it.</div></div>';}
  if(ad>=10)h+='<div class="note">'+(bi.diff<0?'Your bank has <b class="rt">'+R(ad)+' less</b> than expected. Something isn\'t logged: a debit order, a swipe or bank fees.':'Your bank has <b class="gt">'+R(ad)+' more</b> than expected. Maybe something was logged twice, or money came in that isn\'t on the plan.')+'</div>';
  h+='<div class="row" style="gap:8px;margin-top:12px"><button class="btn line" style="flex:1" data-act="debits">+ Log debit orders</button><button class="btn line" style="flex:1" data-act="reanchor">Start fresh today</button></div></div>';
  // plan vs actual
@@ -467,7 +468,7 @@ function vSpend(){
  var txs=S.current.tx.slice().sort(function(a,b){return (b.date||'')<(a.date||'')?-1:(b.date||'')>(a.date||'')?1:(b.at||0)-(a.at||0);});
  h+='<div class="card"><div class="card-h"><h3>This month</h3><span class="mini">'+txs.length+' item'+(txs.length===1?'':'s')+'</span></div>';
  if(!txs.length)h+='<div class="hint" style="margin:0">Nothing logged yet. Tap + after you buy something.</div>';
- txs.forEach(function(t){h+='<div class="tx"><div class="l"><span class="dot" style="background:'+bucketColor(t.bucket)+'"></span><div><div class="n">'+esc(t.note||targetName(t.bucket))+'</div><div class="mini">'+esc(targetName(t.bucket))+' · '+(t.date?dL(t.date):'')+(t.card==='credit'?' · credit':t.card==='cash'?' · cash':'')+(t.src==='scan'?' · scanned':'')+(t.src==='auto'?' · auto':'')+'</div></div></div><div class="row">'+amtHTML(t)+'<button class="icon-btn" data-act="editTx" data-id="'+t.id+'">'+I.edit+'</button></div></div>';});
+ txs.forEach(function(t){h+='<div class="tx"><div class="l"><span class="dot" style="background:'+bucketColor(t.bucket)+'"></span><div><div class="n">'+esc(t.note||targetName(t.bucket))+'</div><div class="mini">'+esc(targetName(t.bucket))+' · '+(t.date?dL(t.date):'')+(t.card==='credit'?' · credit':t.card==='cash'?' · cash':'')+(t.src==='scan'?' · scanned':'')+(t.src==='auto'?' · auto':t.src==='wallet'?' · Apple Pay':'')+'</div></div></div><div class="row">'+amtHTML(t)+'<button class="icon-btn" data-act="editTx" data-id="'+t.id+'">'+I.edit+'</button></div></div>';});
  h+='</div>';
  if((S.current.adj||[]).length)h+='<div class="card"><div class="card-h"><h3>Money moved between buckets</h3></div>'+S.current.adj.map(function(a,i){return '<div class="tx"><div class="l"><div><div class="n">'+R(a.amount)+' · '+esc(targetName(a.from))+' → '+esc(targetName(a.to))+'</div></div></div><button class="icon-btn" data-act="delAdj" data-i="'+i+'">'+I.x+'</button></div>';}).join('')+'</div>';
  return h;
@@ -709,7 +710,7 @@ function txSheet(t,isNew,sub,sugg,cands){
  sheet(isNew?'What was it for?':'Edit purchase',fields,function(o){
   if(!(num(o.amount)>0)){toast('Add an amount');return false;}
   if(!o.bucket){toast('Pick a bucket');return false;}
-  t.amount=Math.round(num(o.amount)*100)/100;t.note=o.note;t.bucket=o.bucket;t.date=o.date||todayISO();t.card=o.card||'debit';S.lastCard=t.card;
+  t.amount=Math.round(num(o.amount)*100)/100;t.note=o.note;t.bucket=o.bucket;t.date=o.date||todayISO();t.card=o.card||'debit';S.lastCard=t.card;if(t.merchant||t.note){S.merchants=S.merchants||{};S.merchants[normM(t.merchant||t.note)]={b:t.bucket,n:t.note};}
   if(isNew){if(!t.at)t.at=Date.now();S.current.tx.push(t);}
   save();if(isNew)sentCard(t);else toast('Updated');
  },isNew?null:function(){S.current.tx=S.current.tx.filter(function(x){return x.id!==t.id;});save('Removed');},sub);
@@ -779,6 +780,30 @@ function moneyInSheet(){
   if(o.via==='cash')S.current.tx.push({id:uid(),src:'manual',at:now,amount:Math.round(a*100)/100,note:'Cash: '+(o.who||'money in'),bucket:'cashin',card:'other',date:d});
   tab='plan';save(R(a)+(o.via==='cash'?' cash':' into your bank')+' added'+(o.to&&o.to!=='split'?' → '+targetName(o.to.indexOf('g_')===0?'goal:'+o.to:o.to):''));
  },null,'Gifts, sales, someone paying you back. It gets added to this month\'s money in, and to your bank or cash.','Add it');
+}
+
+/* ---------- Apple Pay → Vault (via iPhone Shortcuts) ---------- */
+function normM(m){return String(m||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\b(pty|ltd|za|sa|store|shop|\d+)\b/g,' ').replace(/\s+/g,' ').trim();}
+function guessBucket(m){var n=normM(m),mm=S.merchants||{};if(mm[n])return mm[n].b;for(var k in mm){if(k&&n&&(n.indexOf(k)>=0||k.indexOf(n)>=0))return mm[k].b;}
+ if(/engen|shell|sasol|caltex|total|astron|bp\b|fuel|petrol/.test(n))return 'fixed';
+ if(/kfc|mcdonald|nando|steers|spur|wimpy|debonairs|roman|pizza|burger|starbucks|vida|seattle|mugg|ocean basket|uber eats|mr d|takealot|temu|shein|netflix|steam|playstation|cinema|ster kinekor/.test(n))return 'fun';
+ if(/dis chem|dischem|clicks|usn|evox|gym|virgin active|planet fitness/.test(n))return 'fixed';
+ return '';}
+function parseIncoming(str){str=String(str||'').trim();var m=str.match(/^VAULT\|([^|]*)\|([^|]*)\|?(.*)$/i);if(!m)return null;return {amt:num(m[1]),merchant:m[2].trim(),card:/credit/i.test(m[3]||'')?'credit':'debit'};}
+function logIncoming(inc){
+ if(!inc||!(inc.amt>0)){toast('No amount found');return;}
+ var dup=S.current.tx.some(function(t){return t.src==='wallet'&&Math.abs(num(t.amount)-inc.amt)<0.01&&normM(t.merchant)===normM(inc.merchant)&&Date.now()-(t.at||0)<180000;});if(dup){toast('Already logged');return;}
+ var known=(S.merchants||{})[normM(inc.merchant)],b=known?known.b:guessBucket(inc.merchant);
+ var t={id:uid(),src:'wallet',at:Date.now(),amount:Math.round(inc.amt*100)/100,note:known?known.n:inc.merchant,merchant:inc.merchant,card:inc.card,date:todayISO(),bucket:b};
+ if(known&&b){S.current.tx.push(t);save();sentCard(t);return;}
+ txSheet(t,true,'From Apple Pay: <b class="gt">'+esc(inc.merchant)+'</b>. Pick the bucket once and next time it logs itself.',b);
+}
+function pasteIncoming(){
+ if(!navigator.clipboard||!navigator.clipboard.readText){toast('Paste not supported here');return;}
+ navigator.clipboard.readText().then(function(txt){var inc=parseIncoming(txt);if(!inc){toast('Nothing from Apple Pay on the clipboard');return;}logIncoming(inc);try{navigator.clipboard.writeText('');}catch(e){}},function(){toast('Allow paste to read it');});
+}
+function checkUrlIncoming(){
+ try{var q=new URLSearchParams(location.search);if(!q.get('add'))return;var inc={amt:num(q.get('add')),merchant:q.get('m')||'Apple Pay',card:/credit/i.test(q.get('card')||'')?'credit':'debit'};history.replaceState(null,'',location.pathname+location.hash);if(!firstRun)setTimeout(function(){logIncoming(inc);},400);}catch(e){}
 }
 
 /* ---------- fixed cost sheets ---------- */
@@ -906,7 +931,7 @@ root.addEventListener('click',function(e){
  case 'lockNow':showLock();return;
  case 'setPin':setPinFlow();return;
  case 'removePin':if(a.dataset.sure){localStorage.removeItem(PIN_KEY);render();toast('PIN removed');}else{a.dataset.sure='1';a.textContent='Tap again';}return;
- case 'addMenu':var m=modal('<h3 class="serif">Add</h3><div class="acts2" style="margin:0"><button class="btn g" data-m="scan">'+I.scan+'Scan total</button><button class="btn line" style="height:56px" data-m="manual">Type it in</button></div><button class="btn ghost" data-m="cost">+ New fixed expense</button><button class="btn ghost" data-m="extra">+ Someone gave me money / money in</button>');m.addEventListener('click',function(ev){var bb=ev.target.closest('[data-m]');if(!bb)return;m.remove();var w=bb.dataset.m;if(w==='scan')scanFlow();else if(w==='cost')costSheet({freq:'monthly',days:30},true);else if(w==='extra')moneyInSheet();else txSheet({id:uid(),src:'manual'},true);});return;
+ case 'addMenu':var m=modal('<h3 class="serif">Add</h3><div class="acts2" style="margin:0"><button class="btn g" data-m="scan">'+I.scan+'Scan total</button><button class="btn line" style="height:56px" data-m="manual">Type it in</button></div><button class="btn ghost" data-m="paste">⤓ Paste Apple Pay purchase</button><button class="btn ghost" data-m="cost">+ New fixed expense</button><button class="btn ghost" data-m="extra">+ Someone gave me money / money in</button>');m.addEventListener('click',function(ev){var bb=ev.target.closest('[data-m]');if(!bb)return;m.remove();var w=bb.dataset.m;if(w==='scan')scanFlow();else if(w==='paste')pasteIncoming();else if(w==='cost')costSheet({freq:'monthly',days:30},true);else if(w==='extra')moneyInSheet();else txSheet({id:uid(),src:'manual'},true);});return;
  case 'scan':scanFlow();return;
  case 'hf':histFilter=a.dataset.v;rerender();return;
  case 'stats':openStats();return;
@@ -961,6 +986,7 @@ applyTheme();
 if(window.matchMedia)matchMedia('(prefers-color-scheme: dark)').addEventListener&&matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){if(S.settings.theme==='auto')render();});
 render();
 showLock();
+checkUrlIncoming();
 if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(function(){});
 window.__vault={parseTotal:parseTotal,get S(){return S;}};
 })();
