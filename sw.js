@@ -1,6 +1,6 @@
 /* Vault service worker: app works offline; scanner files cached after first use. */
-var V='vault-v15';
-var SHELL=['./','index.html','app.js?v=19','manifest.webmanifest','icon-192.png','icon-512.png','apple-touch-icon.png','logo-dark.png','logo-light.png'];
+var V='vault-v16';
+var SHELL=['./','index.html','app.js?v=20','manifest.webmanifest','icon-192.png','icon-512.png','apple-touch-icon.png','logo-dark.png','logo-light.png'];
 self.addEventListener('install',function(e){e.waitUntil(caches.open(V).then(function(c){return c.addAll(SHELL);}).then(function(){return self.skipWaiting();}));});
 self.addEventListener('activate',function(e){e.waitUntil(caches.keys().then(function(ks){return Promise.all(ks.filter(function(k){return k!==V;}).map(function(k){return caches.delete(k);}));}).then(function(){return self.clients.claim();}));});
 self.addEventListener('fetch',function(e){

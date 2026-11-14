@@ -688,7 +688,7 @@ function sheet(title,fields,onSave,onDelete,subtitle,okLabel){
  return el;
 }
 function modal(html){var el=document.createElement('div');el.className='sheet-bg';el.innerHTML='<div class="sheet">'+html+'</div>';document.body.appendChild(el);el.addEventListener('click',function(e){if(e.target===el)el.remove();});return el;}
-function txTargets(){var o=[];S.buckets.forEach(function(b){if(b.id==='goals')S.goals.forEach(function(g){o.push({v:'goal:'+g.id,label:g.name,c:bucketColor('goal:'+g.id)});});else o.push({v:b.id,label:b.name,c:bucketColor(b.id)});});o.push({v:'paidfor',label:'Paid for someone (not mine)',c:bucketColor('paidfor')});return o;}
+function txTargets(){var o=[];S.buckets.forEach(function(b){if(b.id==='goals')S.goals.forEach(function(g){o.push({v:'goal:'+g.id,label:g.name,c:bucketColor('goal:'+g.id)});});else o.push({v:b.id,label:b.name,c:bucketColor(b.id)});});o.push({v:'paidfor',label:'Paid for someone (not mine)',c:bucketColor('paidfor')});o.push({v:'ccpay',label:'Paying off my credit card',c:bucketColor('ccpay')});return o;}
 
 /* after logging: "R200 sent to Fun · R300 left" */
 function sentCard(t){
@@ -946,7 +946,7 @@ root.addEventListener('click',function(e){
   if(cur!==undefined)delete S.current.tipDone[tid];else S.current.tipDone[tid]=a.dataset.k!=='ok';
   save(S.current.tipDone[tid]===true?'Ticked off ✓':S.current.tipDone[tid]===false?'Marked as not done':'Back to automatic');return;
  case 'bankEdit':var bf=document.querySelector('[data-bank=actual]');if(bf){bf.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(function(){bf.focus();},400);}else{tab='plan';render();}return;
- case 'ccPay':var ci=ccInfo();sheet('Pay credit card',[{k:'amount',label:'How much are you paying off?',type:'money',value:ci.owed},{k:'limit',label:'Card limit',type:'money',value:ci.limit}],function(o){S.cc.limit=num(o.limit)||ci.limit;var a=num(o.amount);if(a>0){S.current.tx.push({id:uid(),src:'manual',at:Date.now(),amount:Math.round(a*100)/100,note:'Credit card payment',bucket:'ccpay',card:'debit',date:todayISO()});save(R(a)+' paid off. '+R(Math.max(0,ci.owed-a))+' still owed');}else save('Updated');},null,R(ci.owed)+' owed of '+R(ci.limit)+'. Paying it moves money from your debit account to the card. Your buckets don\'t change, because the purchases were already counted.','Pay it');return;
+ case 'ccPay':var ci=ccInfo();sheet('Pay credit card',[{k:'amount',label:'How much are you paying off?',type:'money',value:ci.owed},{k:'limit',label:'Card limit',type:'money',value:ci.limit}],function(o){S.cc.limit=num(o.limit)||ci.limit;var a=num(o.amount);if(a>ci.owed+0.5){toast('You only owe '+R2(ci.owed)+'. Paying that');a=ci.owed;}if(a>0){S.current.tx.push({id:uid(),src:'manual',at:Date.now(),amount:Math.round(a*100)/100,note:'Credit card payment',bucket:'ccpay',card:'debit',date:todayISO()});save(R(a)+' paid off. '+R(Math.max(0,ci.owed-a))+' still owed');}else save('Updated');},null,R(ci.owed)+' owed of '+R(ci.limit)+'. Paying it moves money from your debit account to the card. Your buckets don\'t change, because the purchases were already counted.','Pay it');return;
  case 'addTx':txSheet({id:uid(),src:'manual'},true);return;
  case 'editTx':var tx=findById(S.current.tx,id);if(tx)txSheet(tx,false);else toast('That one is in a locked month');return;
  case 'cover':coverSheet(id);return;
