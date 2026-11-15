@@ -117,7 +117,8 @@ function compute(){
  var biz=num(B('business').amount);
  var customs=S.buckets.filter(function(b){return b.custom;});
  var customTotal=customs.reduce(function(a,b){return a+num(b.amount);},0);
- var needs=fixed+biz+customTotal,L=income-needs,efTarget=st.efMonths*needs,efNow=efSaved(m)+(directed.emergency||0);
+ var pm=(S.planMoves||[]),boost=pm.filter(function(v){return v.fixed;}).reduce(function(a,v){return a+num(v.amount);},0);
+ var needs=fixed+biz+customTotal,L=income-needs-boost,efTarget=st.efMonths*needs,efNow=efSaved(m)+(directed.emergency||0);
  var goals=S.goals.map(function(g){var saved=goalSaved(g,m)+(directed[g.id]||0);var rem=Math.max(0,num(g.target)-saved);var ml0=mLeft(m,g.deadline);var ml=Math.max(1,ml0);var need=(g.inSplit&&rem>0)?rem/ml:0;return {g:g,saved:saved,rem:rem,ml:ml,past:String(g.deadline)<todayISO(),need:need,alloc:0};});
  var G=goals.reduce(function(a,x){return a+x.need;},0);
  var alloc={fixed:fixed,business:biz,goals:0,emergency:0,invest:0,fun:0,buffer:0};
@@ -144,6 +145,12 @@ function compute(){
  var keys=Object.keys(alloc);
  keys.forEach(function(k){alloc[k]=Math.round(alloc[k]);});
  goals.forEach(function(x){x.alloc=Math.round(x.alloc);});
+ alloc.goals=goals.reduce(function(a,x){return a+x.alloc;},0);
+ // your own moves between buckets (every month)
+ var gById={};goals.forEach(function(x){gById['goal:'+x.g.id]=x;});
+ function getA(k){return k.indexOf('goal:')===0?(gById[k]?gById[k].alloc:0):(alloc[k]||0);}
+ function addA(k,v){if(k.indexOf('goal:')===0){if(gById[k])gById[k].alloc+=v;}else alloc[k]=(alloc[k]||0)+v;}
+ pm.forEach(function(v){var a=Math.round(num(v.amount));if(!v.fixed)a=Math.min(a,Math.max(0,getA(v.from)));if(!v.fixed)addA(v.from,-a);addA(v.to,a);v._applied=a;});
  alloc.goals=goals.reduce(function(a,x){return a+x.alloc;},0);
  if(!warn||warn.type==='short'){var sum=keys.reduce(function(a,k){return a+alloc[k];},0);alloc.buffer=Math.max(0,alloc.buffer+(Math.round(income)-sum));}
  // budgets = plan + rollover + covers
@@ -445,12 +452,14 @@ function vPlan(){
  if(!ch.length)h+='<div class="hint" style="margin:0">No fixed expenses yet.</div>';
  h+='<button class="btn ghost" data-act="addCost">+ Add a fixed expense</button></div>';
  // split table
- h+='<div class="card"><div class="card-h"><h3>The split</h3><span class="chip '+(c.saveRate>=0.3?'g':c.saveRate>=0.2?'a':'r')+'">Saving '+Math.round(c.saveRate*100)+'%</span></div><table>';
+ h+='<div class="card"><div class="card-h"><h3>The split</h3><button class="btn soft sm" data-act="moveMoney">⇄ Move money</button><span class="chip '+(c.saveRate>=0.3?'g':c.saveRate>=0.2?'a':'r')+'">Saving '+Math.round(c.saveRate*100)+'%</span></div><table>';
  S.buckets.forEach(function(b){var v=c.alloc[b.id]||0,pct=c.income>0?v/c.income*100:0;
   h+='<tr><td><div class="bname"><span class="dot" style="background:'+bucketColor(b.id)+'"></span>'+esc(b.name)+'</div><div class="why">'+esc(b.why||'')+'</div></td><td class="amt">'+R(v)+'<small>'+Math.round(pct)+'%</small></td></tr>';
   if(b.id==='goals')c.goals.forEach(function(x){h+='<tr class="subr"><td><div class="bname">↳ '+esc(x.g.name)+'</div></td><td class="amt">'+(x.g.inSplit?R(x.alloc):'from sales')+'</td></tr>';});
   if(b.id==='emergency')h+='<tr class="subr"><td><div class="bname">↳ '+R(c.efNow)+' of '+R(c.efTarget)+(c.efNow>=c.efTarget?' · full ✓':'')+'</div></td><td></td></tr>';});
- h+='</table></div>';
+ h+='</table>';
+ var pml=S.planMoves||[];if(pml.length)h+='<div class="mini" style="margin:14px 0 4px;font-weight:800;letter-spacing:.08em;text-transform:uppercase">Your changes (every month)</div>'+pml.map(function(v){return '<div class="tx"><div class="l"><div><div class="n">'+R(v.amount)+' · '+esc(v.fromName||targetName(v.from))+' → '+esc(targetName(v.to))+'</div>'+(v._applied!=null&&!v.fixed&&v._applied<num(v.amount)?'<div class="mini at">only '+R(v._applied)+' available this month</div>':'')+'</div></div><button class="icon-btn" data-act="undoMove" data-id="'+v.id+'" aria-label="Undo">'+I.x+'</button></div>';}).join('');
+ h+='</div>';
  h+='<button class="btn g block" data-act="lock">Lock in '+ymL(cur.month,true)+' & start '+ymL(addM(cur.month,1))+'</button><div class="hint" style="text-align:center;margin-bottom:16px">Do this on payday. Saves the month to History.</div>';
  // performance at bottom
  h+=perfCard(rows,'Performance this month');
@@ -806,6 +815,23 @@ function checkUrlIncoming(){
  try{var q=new URLSearchParams(location.search);if(!q.get('add'))return;var inc={amt:num(q.get('add')),merchant:q.get('m')||'Apple Pay',card:/credit/i.test(q.get('card')||'')?'credit':'debit'};history.replaceState(null,'',location.pathname+location.hash);if(!firstRun)setTimeout(function(){logIncoming(inc);},400);}catch(e){}
 }
 
+/* ---------- move money between buckets (plan) ---------- */
+function moveMoneySheet(){
+ var c=compute(),src=[];
+ S.buckets.forEach(function(b){if(b.id==='fixed')return;if(b.id==='goals'){c.goals.forEach(function(x){if(x.g.inSplit)src.push({v:'goal:'+x.g.id,label:x.g.name+' ('+R(x.alloc)+')',c:bucketColor('goal:'+x.g.id)});});return;}var amt=b.id==='business'||b.custom?num(b.amount):(c.alloc[b.id]||0);src.push({v:b.id,label:b.name+' ('+R(amt)+')',c:bucketColor(b.id)});});
+ var to=[{v:'split',label:'Let the plan split it',c:'#9AA59D'}].concat(src.map(function(o){return {v:o.v,label:o.label.replace(/ \(R[\d,]+\)$/,''),c:o.c};}));
+ sheet('Move money',[{k:'from',label:'Take from',type:'chips',options:src,value:'business'},{k:'amount',label:'How much a month',type:'money',value:''},{k:'to',label:'Put it into',type:'chips',options:to,value:'split'}],function(o){
+  var a=num(o.amount);if(!(a>0)){toast('Add an amount');return false;}if(!o.from||!o.to){toast('Pick both');return false;}if(o.from===o.to){toast('Pick two different buckets');return false;}
+  var fb=B(o.from),isFixed=o.from==='business'||!!fb.custom;
+  if(isFixed){if(a>num(fb.amount)){toast(fb.name+' is only '+R(fb.amount));return false;}fb.amount=num(fb.amount)-a;
+   if(o.to!=='split')(S.planMoves=S.planMoves||[]).push({id:uid(),from:o.from,fromName:fb.name,to:o.to,amount:a,fixed:true});
+   save(R(a)+' less to '+fb.name+(o.to==='split'?', split across your buckets':' → '+targetName(o.to))+' every month');
+   if(o.from==='business')setTimeout(function(){toast('Remember to change the debit order at your bank too');},2400);return;}
+  if(o.to==='split'){toast('Pick where it goes');return false;}
+  (S.planMoves=S.planMoves||[]).push({id:uid(),from:o.from,to:o.to,amount:a});save(R(a)+' a month: '+targetName(o.from)+' → '+targetName(o.to));
+ },null,'Changes your plan every month (undo any time). Want it split? Do it twice, e.g. R500 to the TFSA and R500 to Cape Town.','Move it');
+}
+
 /* ---------- fixed cost sheets ---------- */
 function costSheet(c,isNew){
  var isFuel=!!c.fuel;
@@ -935,6 +961,8 @@ root.addEventListener('click',function(e){
  case 'scan':scanFlow();return;
  case 'hf':histFilter=a.dataset.v;rerender();return;
  case 'stats':openStats();return;
+ case 'moveMoney':moveMoneySheet();return;
+ case 'undoMove':var mv=(S.planMoves||[]).filter(function(v){return v.id===id;})[0];if(mv){if(mv.fixed){var fb2=B(mv.from);fb2.amount=num(fb2.amount)+num(mv.amount);}S.planMoves=S.planMoves.filter(function(v){return v.id!==id;});save('Change undone');}return;
  case 'reopen':if(!a.dataset.sure){a.dataset.sure='1';a.textContent='Tap again: '+ymL(S.history[S.history.length-1].month,true)+' becomes your current month';return;}
   var lr=S.history.sort(function(p,q){return p.month<q.month?-1:1;}).pop();
   S.current={month:lr.month,salary:lr.salary,dad:lr.dad,extras:lr.extras||[],tx:(lr.tx||[]).concat(S.current.tx||[]),adj:lr.adj||[],roll:lr.roll||{},bonusAdded:S.current.bonusAdded&&false};
